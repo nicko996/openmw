@@ -1,5 +1,6 @@
 #include "image.hpp"
 
+#include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
 
 #include "resources.hpp"
@@ -36,8 +37,19 @@ namespace LuaUi
 
     void LuaImage::updateProperties()
     {
-        deleteAllItems();
+        // Dynamic texture path (e.g. character preview rendered to an OSG RTT texture).
+        // Takes priority over the normal VFS-path resource.
         TextureResource* resource = propertyValue<TextureResource*>("resource", nullptr);
+        if (resource && resource->mDynamicTexture)
+        {
+            setRenderItemTexture(resource->mDynamicTexture);
+            if (resource->mFlipV)
+                getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
+            WidgetExtension::updateProperties();
+            return;
+        }
+
+        deleteAllItems();
         MyGUI::IntCoord atlasCoord;
         if (resource)
         {

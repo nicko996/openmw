@@ -9,6 +9,11 @@
 
 #include <components/vfs/pathutil.hpp>
 
+namespace MyGUI
+{
+    class ITexture;
+}
+
 namespace VFS
 {
     class Manager;
@@ -21,6 +26,12 @@ namespace LuaUi
         VFS::Path::Normalized mPath;
         osg::Vec2f mOffset;
         osg::Vec2f mSize;
+
+        // For dynamic (render-to-texture) sources, e.g. character previews.
+        // mDynamicTexture is non-owning; lifetime is guaranteed by mDynamicOwner.
+        MyGUI::ITexture* mDynamicTexture = nullptr;
+        bool mFlipV = false; // RTT textures are Y-up, MyGUI is Y-down
+        std::shared_ptr<void> mDynamicOwner; // keeps the OSGTexture alive
     };
 
     // will have more/different data when automated atlasing is supported

@@ -14,9 +14,15 @@
 
 #include "context.hpp"
 #include "luamanagerimp.hpp"
+#include "object.hpp"
+#include "paperdollbindings.hpp"
+
+#include <components/sceneutil/lightmanager.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
+#include "../mwbase/world.hpp"
+#include "../mwrender/renderingmanager.hpp"
 
 namespace MWLua
 {
@@ -295,6 +301,51 @@ namespace MWLua
 
         // TODO
         // api["_showMouseCursor"] = [](bool) {};
+
+        // -- Character preview (paper doll) API --
+        // ui.newCharacterPreview({ actor = someGameObject })
+        //   Returns a table with:
+        //     .textureResource  -- pass as "resource" prop to a TYPE.Image widget
+        //     :update()         -- re-render after equipment changes
+        //     :destroy()        -- release the preview and its GPU texture
+        api["newCharacterPreview"]
+            = [luaManager = context.mLuaManager](const sol::table& options) -> sol::table {
+                  sol::object actorObj = LuaUtil::getFieldOrNil(options, "actor");
+                  if (!actorObj.is<LObject>())
+                      throw std::runtime_error("newCharacterPreview: 'actor' must be a game object");
+
+                  MWWorld::Ptr actor = actorObj.as<LObject>().ptr();
+
+                  // Use getRootNode() (parent of the world LightManager) so the RTT node is NOT
+                  // a descendant of the world LightManager and does not inherit its per-location
+                  // ambient/sun state.  getLightRoot() would cause the paper doll lighting to
+                  // change based on the player's current location.
+                  osg::Group* root = MWBase::Environment::get().getWorld()->getRenderingManager()->getRootNode();
+                  Resource::ResourceSystem* resourceSystem = MWBase::Environment::get().getResourceSystem();
+
+                  // shared_ptr so it can be captured by lambdas below and stored in mDynamicOwner.
+                  auto preview = std::make_shared<LuaCharacterPreview>(root, resourceSystem, actor);
+
+                  // Build a TextureResource whose mDynamicOwner pins the preview alive.
+                  LuaUi::TextureData data;
+                  data.mDynamicTexture = preview->getMyGUITexture();
+                  data.mFlipV = true;
+                  data.mDynamicOwner = preview; // shared_ptr<LuaCharacterPreview> → shared_ptr<void>
+
+                  auto textureResource = luaManager->uiResourceManager()->registerTexture(std::move(data));
+
+                  sol::state_view lua = options.lua_state();
+                  sol::table result(lua, sol::create);
+                  result["textureResource"] = textureResource;
+                  result["update"] = [preview]() { preview->update(); };
+                  result["destroy"] = [textureResource]() mutable {
+                      // Nullify the dynamic texture so the Image widget stops using it,
+                      // then drop the owner so the preview and OSGTexture are freed.
+                      textureResource->mDynamicTexture = nullptr;
+                      textureResource->mDynamicOwner.reset();
+                  };
+                  return result;
+              };
 
         return api;
     }

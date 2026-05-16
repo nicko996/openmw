@@ -428,6 +428,11 @@ namespace MWRender
         return mSceneRoot.get();
     }
 
+    osg::Group* RenderingManager::getRootNode()
+    {
+        return mRootNode.get();
+    }
+
     void RenderingManager::setNightEyeFactor(float factor)
     {
         if (factor != mNightEyeFactor)
