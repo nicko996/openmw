@@ -51,6 +51,13 @@ namespace MWLua
         /// Re-render the character (call after equipment changes).
         void update();
 
+        /// Rotate the character model around the vertical axis (delegates to InventoryPreview).
+        /// \param angleRadians  Yaw angle in radians.
+        void setRotation(float angleRadians);
+
+        /// Return the current yaw in radians (as set by the last setRotation call).
+        float getRotation() const;
+
         /// Raw pointer to the MyGUI texture wrapping the OSG RTT result.
         /// Valid as long as this object is alive.
         MyGUI::ITexture* getMyGUITexture();

@@ -29,6 +29,17 @@ namespace MWLua
             mPreview->update();
     }
 
+    void LuaCharacterPreview::setRotation(float angleRadians)
+    {
+        if (mPreview)
+            mPreview->setRotation(angleRadians);
+    }
+
+    float LuaCharacterPreview::getRotation() const
+    {
+        return mPreview ? mPreview->getRotation() : 0.f;
+    }
+
     MyGUI::ITexture* LuaCharacterPreview::getMyGUITexture()
     {
         return mOsgTexture.get();

@@ -86,10 +86,20 @@ namespace MWRender
 
         int getSlotSelected(int posX, int posY);
 
+        /// Rotate the character model around the vertical (Z) axis.
+        /// \param angleRadians  Yaw in radians; positive = counter-clockwise when viewed from above.
+        void setRotation(float angleRadians);
+
+        /// Return the current yaw applied by setRotation, in radians.
+        float getRotation() const { return mRotationRadians; }
+
     protected:
         osg::ref_ptr<osg::Viewport> mViewport;
 
         void onSetup() override;
+
+    private:
+        float mRotationRadians = 0.f;
     };
 
     class UpdateCameraCallback;

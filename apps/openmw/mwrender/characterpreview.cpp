@@ -498,6 +498,13 @@ namespace MWRender
         mCharacter = MWWorld::Ptr(ptr.getBase(), nullptr);
     }
 
+    void InventoryPreview::setRotation(float angleRadians)
+    {
+        mRotationRadians = angleRadians;
+        mNode->setAttitude(osg::Quat(angleRadians, osg::Vec3f(0, 0, 1)));
+        redraw();
+    }
+
     void InventoryPreview::onSetup()
     {
         CharacterPreview::onSetup();

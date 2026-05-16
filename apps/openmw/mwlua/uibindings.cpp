@@ -17,6 +17,7 @@
 #include "object.hpp"
 #include "paperdollbindings.hpp"
 
+#include <components/esm3/loadnpc.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 
 #include "../mwbase/environment.hpp"
@@ -315,6 +316,8 @@ namespace MWLua
                       throw std::runtime_error("newCharacterPreview: 'actor' must be a game object");
 
                   MWWorld::Ptr actor = actorObj.as<LObject>().ptr();
+                  if (actor.getType() != ESM::NPC::sRecordId)
+                      throw std::runtime_error("newCharacterPreview: 'actor' must be an NPC");
 
                   // Use getRootNode() (parent of the world LightManager) so the RTT node is NOT
                   // a descendant of the world LightManager and does not inherit its per-location
@@ -338,6 +341,8 @@ namespace MWLua
                   sol::table result(lua, sol::create);
                   result["textureResource"] = textureResource;
                   result["update"] = [preview]() { preview->update(); };
+                  result["setRotation"] = [preview](float angle) { preview->setRotation(angle); };
+                  result["getRotation"] = [preview]() { return preview->getRotation(); };
                   result["destroy"] = [textureResource]() mutable {
                       // Nullify the dynamic texture so the Image widget stops using it,
                       // then drop the owner so the preview and OSGTexture are freed.
