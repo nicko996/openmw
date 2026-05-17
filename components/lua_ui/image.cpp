@@ -43,12 +43,15 @@ namespace LuaUi
         if (resource && resource->mDynamicTexture)
         {
             setRenderItemTexture(resource->mDynamicTexture);
-            if (resource->mFlipV)
-                getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f));
+            getSubWidgetMain()->_setUVSet(resource->mFlipV
+                    ? MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f)
+                    : MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
             WidgetExtension::updateProperties();
             return;
         }
 
+        // Reset UVs in case this widget previously displayed a flipped dynamic resource.
+        getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
         deleteAllItems();
         MyGUI::IntCoord atlasCoord;
         if (resource)

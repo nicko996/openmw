@@ -79,6 +79,8 @@ namespace MWRender
     {
     public:
         InventoryPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character);
+        InventoryPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem, const MWWorld::Ptr& character,
+            int sizeX, int sizeY);
 
         void updatePtr(const MWWorld::Ptr& ptr);
 
@@ -105,14 +107,17 @@ namespace MWRender
 
     /// RTT preview of a single static mesh (weapon, armor, misc item, etc.).
     /// Unlike CharacterPreview/InventoryPreview, does not require an NPC or a skeleton.
+    /// Throws std::runtime_error if the mesh cannot be loaded.
     class ObjectPreview
     {
     public:
         /// \param parent          Root group node (same as CharacterPreview).
         /// \param resourceSystem
         /// \param meshPath        Normalized VFS path, e.g. "meshes/w/w_longsword.nif".
+        /// \param sizeX           RTT texture width.
+        /// \param sizeY           RTT texture height.
         ObjectPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
-            const std::string& meshPath);
+            const std::string& meshPath, int sizeX = 512, int sizeY = 512);
         ~ObjectPreview();
 
         /// Re-render (e.g. after calling setRotations).

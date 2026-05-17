@@ -12,10 +12,10 @@
 #include <components/misc/strings/format.hpp>
 #include <components/settings/values.hpp>
 
+#include "characterpreviewwrapper.hpp"
 #include "context.hpp"
 #include "luamanagerimp.hpp"
 #include "object.hpp"
-#include "paperdollbindings.hpp"
 
 #include <components/esm3/loadnpc.hpp>
 #include <components/sceneutil/lightmanager.hpp>
@@ -305,17 +305,14 @@ namespace MWLua
         // api["_showMouseCursor"] = [](bool) {};
 
         // -- Character preview (paper doll) API --
-        // ui.newCharacterPreview({ actor = someGameObject })
-        //   Returns a table with:
-        //     .textureResource       -- pass as "resource" prop to a TYPE.Image widget
-        //     :update()              -- re-render after equipment changes
-        //     :setActor(gameObject)  -- switch to a different NPC (rebuilds animation)
-        //     :setRotation(radians)  -- yaw around vertical axis
-        //     :getRotation()         -- current yaw in radians
-        //     :getTextureSize()      -- Vec2f(width, height) of the RTT texture
-        //     :destroy()             -- release the preview and its GPU texture
+        // See files/lua_api/openmw/ui.lua for documentation.
+        // The wrapper is exposed as a sol::usertype (registered in initUserInterfacePackage)
+        // so Lua sees a proper userdata that supports the `:method()` call syntax.
+        // The actual OSG construction is deferred to LuaManager::addAction so scene-graph
+        // mutations happen on the synchronized side of the frame, not during Cull.
         api["newCharacterPreview"]
-            = [luaManager = context.mLuaManager](const sol::table& options) -> sol::table {
+            = [luaManager = context.mLuaManager](const sol::table& options)
+                  -> std::shared_ptr<LuaCharacterPreview> {
                   sol::object actorObj = LuaUtil::getFieldOrNil(options, "actor");
                   if (!actorObj.is<LObject>())
                       throw std::runtime_error("newCharacterPreview: 'actor' must be a game object");
@@ -324,104 +321,77 @@ namespace MWLua
                   if (actor.getType() != ESM::NPC::sRecordId)
                       throw std::runtime_error("newCharacterPreview: 'actor' must be an NPC");
 
+                  int sizeX = 512;
+                  int sizeY = 1024;
+                  sol::object sizeObj = LuaUtil::getFieldOrNil(options, "size");
+                  if (sizeObj.is<osg::Vec2f>())
+                  {
+                      const auto v = sizeObj.as<osg::Vec2f>();
+                      sizeX = std::max(1, static_cast<int>(v.x()));
+                      sizeY = std::max(1, static_cast<int>(v.y()));
+                  }
+
                   // Use getRootNode() (parent of the world LightManager) so the RTT node is NOT
                   // a descendant of the world LightManager and does not inherit its per-location
-                  // ambient/sun state.  getLightRoot() would cause the paper doll lighting to
+                  // ambient/sun state.  getLightRoot() would cause the preview lighting to
                   // change based on the player's current location.
                   osg::Group* root = MWBase::Environment::get().getWorld()->getRenderingManager()->getRootNode();
                   Resource::ResourceSystem* resourceSystem = MWBase::Environment::get().getResourceSystem();
 
-                  // shared_ptr so it can be captured by lambdas below and stored in mDynamicOwner.
-                  auto preview = std::make_shared<LuaCharacterPreview>(root, resourceSystem, actor);
+                  auto preview = std::make_shared<LuaCharacterPreview>(
+                      root, resourceSystem, actor, sizeX, sizeY);
 
-                  // Build a TextureResource whose mDynamicOwner pins the preview alive.
                   LuaUi::TextureData data;
-                  data.mDynamicTexture = preview->getMyGUITexture();
+                  // mDynamicTexture stays null until doConstruct runs; the LuaImage widget
+                  // tolerates this and will pick up the texture on its next updateProperties.
                   data.mFlipV = true;
-                  data.mDynamicOwner = preview; // shared_ptr<LuaCharacterPreview> → shared_ptr<void>
-
+                  data.mDynamicOwner = preview;
                   auto textureResource = luaManager->uiResourceManager()->registerTexture(std::move(data));
+                  preview->setTextureResource(textureResource);
 
-                  sol::state_view lua = options.lua_state();
-                  sol::table result(lua, sol::create);
-                  result["textureResource"] = textureResource;
-                  result["update"] = [preview]() { preview->update(); };
-                  result["setActor"] = [preview](const LObject& actor) {
-                      if (actor.ptr().getType() != ESM::NPC::sRecordId)
-                          throw std::runtime_error("setActor: actor must be an NPC");
-                      preview->setActor(actor.ptr());
-                  };
-                  result["setRotation"] = [preview](float angle) { preview->setRotation(angle); };
-                  result["getRotation"] = [preview]() { return preview->getRotation(); };
-                  result["getTextureSize"] = [preview]() {
-                      return osg::Vec2f(
-                          static_cast<float>(preview->getTextureWidth()),
-                          static_cast<float>(preview->getTextureHeight()));
-                  };
-                  result["destroy"] = [textureResource]() mutable {
-                      // Nullify the dynamic texture so the Image widget stops using it,
-                      // then drop the owner so the preview and OSGTexture are freed.
-                      textureResource->mDynamicTexture = nullptr;
-                      textureResource->mDynamicOwner.reset();
-                  };
-                  return result;
+                  luaManager->addAction([preview] { preview->doConstruct(); }, "CharacterPreview construct");
+                  return preview;
               };
 
         // -- Object/item preview API --
-        // ui.newObjectPreview({ object = someGameObject })
-        //   Returns a table with:
-        //     .textureResource                -- pass as "resource" prop to a TYPE.Image widget
-        //     :setRotations(yaw, pitch[,roll]) -- rotate mesh (radians); yaw=Z, pitch=X, roll=Y
-        //     :getYaw()                       -- current yaw in radians
-        //     :getPitch()                     -- current pitch in radians
-        //     :getRoll()                      -- current roll in radians
-        //     :getTextureSize()               -- Vec2f(width, height) of the RTT texture
-        //     :destroy()                      -- release the preview and its GPU texture
-        //
-        // Works with any game object that has a model (weapons, armor, misc items,
-        // ingredients, etc.).  Does NOT require an NPC skeleton.
+        // ui.newObjectPreview({ object = someGameObject [, size = vector2(w,h)] })
+        // See files/lua_api/openmw/ui.lua for documentation.
         api["newObjectPreview"]
-            = [luaManager = context.mLuaManager](const sol::table& options) -> sol::table {
+            = [luaManager = context.mLuaManager](const sol::table& options)
+                  -> std::shared_ptr<LuaObjectPreview> {
                   sol::object objArg = LuaUtil::getFieldOrNil(options, "object");
                   if (!objArg.is<LObject>())
                       throw std::runtime_error("newObjectPreview: 'object' must be a game object");
 
                   MWWorld::Ptr obj = objArg.as<LObject>().ptr();
-                  const std::string meshPath = obj.getClass().getCorrectedModel(obj).value();
+                  std::string meshPath = obj.getClass().getCorrectedModel(obj).value();
                   if (meshPath.empty())
                       throw std::runtime_error("newObjectPreview: object has no model");
+
+                  int sizeX = 512;
+                  int sizeY = 512;
+                  sol::object sizeObj = LuaUtil::getFieldOrNil(options, "size");
+                  if (sizeObj.is<osg::Vec2f>())
+                  {
+                      const auto v = sizeObj.as<osg::Vec2f>();
+                      sizeX = std::max(1, static_cast<int>(v.x()));
+                      sizeY = std::max(1, static_cast<int>(v.y()));
+                  }
 
                   osg::Group* root = MWBase::Environment::get().getWorld()->getRenderingManager()->getRootNode();
                   Resource::ResourceSystem* resourceSystem = MWBase::Environment::get().getResourceSystem();
 
-                  auto preview = std::make_shared<LuaObjectPreview>(root, resourceSystem, meshPath);
+                  auto preview = std::make_shared<LuaObjectPreview>(
+                      root, resourceSystem, std::move(meshPath), sizeX, sizeY);
 
                   LuaUi::TextureData data;
-                  data.mDynamicTexture = preview->getMyGUITexture();
                   data.mFlipV = true;
-                  data.mDynamicOwner = preview; // shared_ptr<LuaObjectPreview> → shared_ptr<void>
-
+                  data.mDynamicOwner = preview;
                   auto textureResource = luaManager->uiResourceManager()->registerTexture(std::move(data));
+                  preview->setTextureResource(textureResource);
 
-                  sol::state_view lua = options.lua_state();
-                  sol::table result(lua, sol::create);
-                  result["textureResource"] = textureResource;
-                  result["setRotations"] = [preview](float yaw, float pitch, sol::optional<float> roll) {
-                      preview->setRotations(yaw, pitch, roll.value_or(0.f));
-                  };
-                  result["getYaw"]   = [preview]() { return preview->getYaw(); };
-                  result["getPitch"] = [preview]() { return preview->getPitch(); };
-                  result["getRoll"]  = [preview]() { return preview->getRoll(); };
-                  result["getTextureSize"] = [preview]() {
-                      return osg::Vec2f(
-                          static_cast<float>(preview->getTextureWidth()),
-                          static_cast<float>(preview->getTextureHeight()));
-                  };
-                  result["destroy"] = [textureResource]() mutable {
-                      textureResource->mDynamicTexture = nullptr;
-                      textureResource->mDynamicOwner.reset();
-                  };
-                  return result;
+                  luaManager->addAction([preview] { preview->doConstruct(); }, "ObjectPreview construct");
+                  return preview;
               };
 
         return api;
@@ -460,6 +430,65 @@ namespace MWLua
             uiLayer["size"] = sol::readonly_property([](LuaUi::Layer& self) { return self.size(); });
             uiLayer[sol::meta_function::to_string]
                 = [](LuaUi::Layer& self) { return Misc::StringUtils::format("UiLayer(%s)", self.name()); };
+
+            // -- CharacterPreview usertype -----------------------------------------------------------
+            auto charPreview = context.sol().new_usertype<LuaCharacterPreview>("CharacterPreview");
+            charPreview["textureResource"] = sol::readonly_property(
+                [](const LuaCharacterPreview& p) { return p.textureResource(); });
+            charPreview["getRotation"] = [](const LuaCharacterPreview& p) { return p.getRotation(); };
+            charPreview["getTextureSize"] = [](const LuaCharacterPreview& p) {
+                return osg::Vec2f(static_cast<float>(p.getTextureWidth()),
+                    static_cast<float>(p.getTextureHeight()));
+            };
+            charPreview["update"]
+                = [luaManager = context.mLuaManager](const std::shared_ptr<LuaCharacterPreview>& p) {
+                      luaManager->addAction([p] { p->doUpdate(); }, "CharacterPreview update");
+                  };
+            charPreview["setActor"] = [luaManager = context.mLuaManager](
+                                          const std::shared_ptr<LuaCharacterPreview>& p, const LObject& actor) {
+                if (actor.ptr().getType() != ESM::NPC::sRecordId)
+                    throw std::runtime_error("setActor: actor must be an NPC");
+                MWWorld::Ptr newActor = actor.ptr();
+                luaManager->addAction(
+                    [p, newActor] { p->doSetActor(newActor); }, "CharacterPreview setActor");
+            };
+            charPreview["setRotation"] = [luaManager = context.mLuaManager](
+                                             const std::shared_ptr<LuaCharacterPreview>& p, float angle) {
+                luaManager->addAction(
+                    [p, angle] { p->doSetRotation(angle); }, "CharacterPreview setRotation");
+            };
+            charPreview["destroy"]
+                = [luaManager = context.mLuaManager](const std::shared_ptr<LuaCharacterPreview>& p) {
+                      luaManager->addAction([p] { p->doDestroy(); }, "CharacterPreview destroy");
+                  };
+
+            // -- ObjectPreview usertype --------------------------------------------------------------
+            auto objPreview = context.sol().new_usertype<LuaObjectPreview>("ObjectPreview");
+            objPreview["textureResource"] = sol::readonly_property(
+                [](const LuaObjectPreview& p) { return p.textureResource(); });
+            objPreview["getYaw"]   = [](const LuaObjectPreview& p) { return p.getYaw(); };
+            objPreview["getPitch"] = [](const LuaObjectPreview& p) { return p.getPitch(); };
+            objPreview["getRoll"]  = [](const LuaObjectPreview& p) { return p.getRoll(); };
+            objPreview["getTextureSize"] = [](const LuaObjectPreview& p) {
+                return osg::Vec2f(static_cast<float>(p.getTextureWidth()),
+                    static_cast<float>(p.getTextureHeight()));
+            };
+            // setRotations takes a table { yaw = ?, pitch = ?, roll = ? }. Missing fields
+            // default to 0 (replace semantics): every call fully specifies the orientation.
+            objPreview["setRotations"]
+                = [luaManager = context.mLuaManager](
+                      const std::shared_ptr<LuaObjectPreview>& p, const sol::table& opts) {
+                      const float yaw = opts.get_or("yaw", 0.f);
+                      const float pitch = opts.get_or("pitch", 0.f);
+                      const float roll = opts.get_or("roll", 0.f);
+                      luaManager->addAction(
+                          [p, yaw, pitch, roll] { p->doSetRotations(yaw, pitch, roll); },
+                          "ObjectPreview setRotations");
+                  };
+            objPreview["destroy"]
+                = [luaManager = context.mLuaManager](const std::shared_ptr<LuaObjectPreview>& p) {
+                      luaManager->addAction([p] { p->doDestroy(); }, "ObjectPreview destroy");
+                  };
         }
 
         sol::object cached = context.getTypePackage("openmw_ui");

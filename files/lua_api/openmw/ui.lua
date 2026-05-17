@@ -325,9 +325,13 @@
 
 ---
 -- Create a render-to-texture preview of an NPC character (paper doll).
--- The returned @{#CharacterPreview} contains a @{#TextureResource} that can be
+-- The returned @{#CharacterPreview} exposes a @{#TextureResource} that can be
 -- used directly as the `resource` property of a @{openmw_ui_widget_image} widget.
 -- The preview uses the same lighting and camera as the built-in inventory screen.
+--
+-- The OSG render-to-texture is built on the next synchronized frame; the widget
+-- will show the preview from that frame onward. There is no need to wait for the
+-- preview to be ready before assigning its `textureResource` to a widget.
 -- @function [parent=#ui] newCharacterPreview
 -- @param #CharacterPreviewOptions options
 -- @return #CharacterPreview
@@ -336,28 +340,32 @@
 -- local util = require('openmw.util')
 -- local self = require('openmw.self')
 --
--- local preview = ui.newCharacterPreview({ actor = self })
+-- local preview = ui.newCharacterPreview({
+--     actor = self,
+--     size  = util.vector2(512, 1024),  -- optional, this is the default
+-- })
 -- local element = ui.create({
 --     type  = ui.TYPE.Image,
 --     layer = 'Windows',
 --     props = {
---         resource     = preview.textureResource,
---         size         = util.vector2(256, 512),
+--         resource = preview.textureResource,
+--         size     = util.vector2(256, 512),
 --     },
 -- })
 -- -- Re-render after equipping an item:
--- preview.update()
+-- preview:update()
 -- -- Rotate 90 degrees:
--- preview.setRotation(math.pi / 2)
+-- preview:setRotation(math.pi / 2)
 -- -- Switch to a different NPC:
--- preview.setActor(someOtherNpc)
+-- preview:setActor(someOtherNpc)
 -- -- Release when no longer needed:
--- preview.destroy()
+-- preview:destroy()
 
 ---
 -- Table with arguments passed to @{#ui.newCharacterPreview}.
 -- @type CharacterPreviewOptions
 -- @field openmw.core#GameObject actor The NPC whose equipment will be rendered. Must be of type NPC. Required.
+-- @field openmw.util#Vector2 size Width and height of the underlying RTT texture, in pixels. Optional, defaults to (512, 1024).
 
 ---
 -- A live render-to-texture preview of an NPC character, returned by @{#ui.newCharacterPreview}.
@@ -407,8 +415,10 @@
 ---
 -- Create a render-to-texture preview of a single game object mesh (weapon, armor,
 -- ingredient, etc.). Does not require an NPC or skeleton.
--- The returned @{#ObjectPreview} contains a @{#TextureResource} that can be
+-- The returned @{#ObjectPreview} exposes a @{#TextureResource} that can be
 -- used directly as the `resource` property of a @{openmw_ui_widget_image} widget.
+--
+-- Throws if the object has no model or the mesh cannot be loaded.
 -- @function [parent=#ui] newObjectPreview
 -- @param #ObjectPreviewOptions options
 -- @return #ObjectPreview
@@ -416,7 +426,10 @@
 -- local ui   = require('openmw.ui')
 -- local util = require('openmw.util')
 --
--- local preview = ui.newObjectPreview({ object = mySword })
+-- local preview = ui.newObjectPreview({
+--     object = mySword,
+--     size   = util.vector2(256, 256),  -- optional, defaults to (512, 512)
+-- })
 -- local element = ui.create({
 --     type  = ui.TYPE.Image,
 --     layer = 'Windows',
@@ -426,16 +439,17 @@
 --     },
 -- })
 -- -- Spin the mesh (yaw=Z spin, pitch=X tilt, roll=Y tilt):
--- preview.setRotations(math.pi / 4, 0.2, 0)
+-- preview:setRotations({ yaw = math.pi / 4, pitch = 0.2 })
 -- -- Read back the current angles:
--- print(preview.getYaw(), preview.getPitch(), preview.getRoll())
+-- print(preview:getYaw(), preview:getPitch(), preview:getRoll())
 -- -- Release when no longer needed:
--- preview.destroy()
+-- preview:destroy()
 
 ---
 -- Table with arguments passed to @{#ui.newObjectPreview}.
 -- @type ObjectPreviewOptions
 -- @field openmw.core#GameObject object The game object whose model will be rendered. Must have a mesh. Required.
+-- @field openmw.util#Vector2 size Width and height of the underlying RTT texture, in pixels. Optional, defaults to (512, 512).
 
 ---
 -- A live render-to-texture preview of a single mesh, returned by @{#ui.newObjectPreview}.
@@ -449,11 +463,18 @@
 ---
 -- Rotate the mesh.
 -- The rotation order is: yaw (Z) applied first, then pitch (X), then roll (Y).
+-- Replace semantics: any axis missing from the table is set to 0.
 -- @function [parent=#ObjectPreview] setRotations
 -- @param self
--- @param #number yawRadians   Spin around the vertical (Z) axis. Required.
--- @param #number pitchRadians Tilt around the lateral (X) axis. Required.
--- @param #number rollRadians  Tilt around the forward (Y) axis. Optional, defaults to 0.
+-- @param #ObjectPreviewRotations rotations Table with yaw/pitch/roll fields (all optional, default 0).
+
+---
+-- Table with the three rotation axes for @{#ObjectPreview.setRotations}.
+-- All fields are optional; omitted axes default to 0.
+-- @type ObjectPreviewRotations
+-- @field #number yaw   Spin around the vertical (Z) axis, in radians.
+-- @field #number pitch Tilt around the lateral (X) axis, in radians.
+-- @field #number roll  Tilt around the forward (Y) axis, in radians.
 
 ---
 -- Return the current yaw in radians.
