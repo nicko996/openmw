@@ -11,9 +11,6 @@ namespace MWLua
 {
     namespace
     {
-        // Sync the freshly-built OSG texture into the texture resource so that any
-        // ui.TYPE.Image widget bound to the resource picks it up on its next update.
-        // If the resource has already been released (weak_ptr expired) this is a no-op.
         void publishTextureToResource(const std::weak_ptr<LuaUi::TextureResource>& weakTr,
             MyGUIPlatform::OSGTexture* tex)
         {
@@ -21,8 +18,6 @@ namespace MWLua
                 tr->mDynamicTexture = tex;
         }
 
-        // Detach the dynamic texture from the resource so widgets stop drawing it,
-        // and drop the back-reference that pins the wrapper alive.
         void unpublishResource(const std::weak_ptr<LuaUi::TextureResource>& weakTr)
         {
             if (auto tr = weakTr.lock())

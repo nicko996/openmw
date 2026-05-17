@@ -34,10 +34,6 @@ namespace MWLua
     // Wraps an MWRender::InventoryPreview so it can be exposed to Lua scripts as a
     // dynamic TextureResource consumable by ui.TYPE.Image.
     //
-    // Threading model: every method that touches the OSG scene graph (mDoXxx) is meant to
-    // be invoked from LuaManager::addAction, i.e. on the synchronized side of the frame.
-    // The constructor itself does no OSG work — call doConstruct() from an addAction.
-    //
     // Lifetime: the texture resource holds a shared_ptr<void> to the wrapper via
     // TextureData::mDynamicOwner, pinning it alive for as long as the texture is in use.
     // The wrapper holds only a weak_ptr to the texture resource to avoid a cycle.
@@ -82,7 +78,7 @@ namespace MWLua
     };
 
     // Wraps an MWRender::ObjectPreview the same way LuaCharacterPreview wraps InventoryPreview.
-    // Works with any object that has a mesh; does NOT require an NPC skeleton.
+    // Works with any object that has a mesh.
     class LuaObjectPreview
     {
     public:

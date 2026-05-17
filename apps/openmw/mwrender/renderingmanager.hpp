@@ -131,10 +131,6 @@ namespace MWRender
 
         SceneUtil::LightManager* getLightRoot();
 
-        /// Returns the scene root node (parent of the world LightManager).
-        /// Use this — not getLightRoot() — as the parent for off-screen RTT nodes such as
-        /// character previews, so they are NOT children of the world LightManager and therefore
-        /// do not inherit its per-location ambient/sun state.
         osg::Group* getRootNode();
 
         void setNightEyeFactor(float factor);

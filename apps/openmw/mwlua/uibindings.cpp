@@ -303,12 +303,6 @@ namespace MWLua
         // TODO
         // api["_showMouseCursor"] = [](bool) {};
 
-        // -- Character preview (paper doll) API --
-        // See files/lua_api/openmw/ui.lua for documentation.
-        // The wrapper is exposed as a sol::usertype (registered in initUserInterfacePackage)
-        // so Lua sees a proper userdata that supports the `:method()` call syntax.
-        // The actual OSG construction is deferred to LuaManager::addAction so scene-graph
-        // mutations happen on the synchronized side of the frame, not during Cull.
         api["newCharacterPreview"]
             = [luaManager = context.mLuaManager](const sol::table& options)
                   -> std::shared_ptr<LuaCharacterPreview> {
@@ -330,10 +324,6 @@ namespace MWLua
                       sizeY = std::max(1, static_cast<int>(v.y()));
                   }
 
-                  // Use getRootNode() (parent of the world LightManager) so the RTT node is NOT
-                  // a descendant of the world LightManager and does not inherit its per-location
-                  // ambient/sun state.  getLightRoot() would cause the preview lighting to
-                  // change based on the player's current location.
                   osg::Group* root = MWBase::Environment::get().getWorld()->getRenderingManager()->getRootNode();
                   Resource::ResourceSystem* resourceSystem = MWBase::Environment::get().getResourceSystem();
 

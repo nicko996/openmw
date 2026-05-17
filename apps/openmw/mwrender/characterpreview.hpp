@@ -106,7 +106,6 @@ namespace MWRender
     };
 
     /// RTT preview of a single static mesh (weapon, armor, misc item, etc.).
-    /// Unlike CharacterPreview/InventoryPreview, does not require an NPC or a skeleton.
     /// Throws std::runtime_error if the mesh cannot be loaded.
     class ObjectPreview
     {
