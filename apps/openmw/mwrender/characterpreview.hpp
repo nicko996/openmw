@@ -2,6 +2,7 @@
 #define MWRENDER_CHARACTERPREVIEW_H
 
 #include <memory>
+#include <string>
 #include <osg/ref_ptr>
 
 #include <osg/PositionAttitudeTransform>
@@ -100,6 +101,44 @@ namespace MWRender
 
     private:
         float mRotationRadians = 0.f;
+    };
+
+    /// RTT preview of a single static mesh (weapon, armor, misc item, etc.).
+    /// Unlike CharacterPreview/InventoryPreview, does not require an NPC or a skeleton.
+    class ObjectPreview
+    {
+    public:
+        /// \param parent          Root group node (same as CharacterPreview).
+        /// \param resourceSystem
+        /// \param meshPath        Normalized VFS path, e.g. "meshes/w/w_longsword.nif".
+        ObjectPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
+            const std::string& meshPath);
+        ~ObjectPreview();
+
+        /// Re-render (e.g. after calling setRotations).
+        void redraw();
+
+        /// Rotate the mesh.
+        /// \param yawRadians    Spin around the vertical (Z) axis, in radians.
+        /// \param pitchRadians  Tilt around the lateral (X) axis, in radians.
+        void setRotations(float yawRadians, float pitchRadians);
+
+        float getYaw() const { return mYawRadians; }
+        float getPitch() const { return mPitchRadians; }
+
+        osg::ref_ptr<osg::Texture2D> getTexture();
+        /// Get the osg::StateSet required to render the texture correctly, if any.
+        osg::StateSet* getTextureStateSet() { return mTextureStateSet; }
+
+    private:
+        osg::ref_ptr<osg::Group>                     mParent;
+        Resource::ResourceSystem*                    mResourceSystem;
+        osg::ref_ptr<osg::StateSet>                  mTextureStateSet;
+        osg::ref_ptr<CharacterPreviewRTTNode>         mRTTNode;
+        osg::ref_ptr<DrawOnceCallback>               mDrawOnceCallback;
+        osg::ref_ptr<osg::PositionAttitudeTransform>  mNode;
+        float mYawRadians   = 0.f;
+        float mPitchRadians = 0.f;
     };
 
     class UpdateCameraCallback;

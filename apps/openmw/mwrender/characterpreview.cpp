@@ -519,6 +519,163 @@ namespace MWRender
 
     // --------------------------------------------------------------------------------------------------
 
+    ObjectPreview::ObjectPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
+        const std::string& meshPath)
+        : mParent(parent)
+        , mResourceSystem(resourceSystem)
+    {
+        mTextureStateSet = new osg::StateSet;
+        mTextureStateSet->setAttribute(new osg::BlendFunc(osg::BlendFunc::ONE, osg::BlendFunc::ONE_MINUS_SRC_ALPHA));
+
+        mRTTNode = new CharacterPreviewRTTNode(512, 512);
+        mRTTNode->setNodeMask(Mask_RenderToTexture);
+
+        osg::ref_ptr<SceneUtil::LightManager> lightManager = new SceneUtil::LightManager(SceneUtil::LightSettings{
+            .mLightingMethod = mResourceSystem->getSceneManager()->getLightingMethod(),
+            .mMaxLights = Settings::shaders().mMaxLights,
+            .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
+            .mLightFadeStart = Settings::shaders().mLightFadeStart,
+            .mLightBoundsMultiplier = Settings::shaders().mLightBoundsMultiplier,
+        });
+        lightManager->setStartLight(1);
+        osg::ref_ptr<osg::StateSet> stateset = lightManager->getOrCreateStateSet();
+        stateset->setDefine("FORCE_OPAQUE", "1", osg::StateAttribute::ON);
+        stateset->setMode(GL_NORMALIZE, osg::StateAttribute::ON);
+        stateset->setMode(GL_CULL_FACE, osg::StateAttribute::ON);
+        osg::ref_ptr<osg::Material> defaultMat(new osg::Material);
+        defaultMat->setColorMode(osg::Material::OFF);
+        defaultMat->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
+        defaultMat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
+        defaultMat->setSpecular(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 0.f));
+        stateset->setAttribute(defaultMat);
+
+        SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
+
+        osg::ref_ptr<osg::Fog> fog(new osg::Fog);
+        fog->setStart(10000000);
+        fog->setEnd(10000000);
+        stateset->setAttributeAndModes(fog, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+
+        stateset->addUniform(new osg::Uniform("far", 10000000.0f));
+        stateset->addUniform(new osg::Uniform("skyBlendingStart", 8000000.0f));
+        stateset->addUniform(new osg::Uniform("screenRes", osg::Vec2f{ 1, 1 }));
+        stateset->addUniform(new osg::Uniform("emissiveMult", 1.f));
+
+        osg::ref_ptr<osg::Texture2D> dummyTexture = new osg::Texture2D();
+        dummyTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+        dummyTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+        dummyTexture->setInternalFormat(GL_DEPTH_COMPONENT);
+        dummyTexture->setTextureSize(1, 1);
+        dummyTexture->setShadowComparison(true);
+        dummyTexture->setShadowCompareFunc(osg::Texture::ShadowCompareFunc::ALWAYS);
+        stateset->setTextureAttributeAndModes(7, dummyTexture, osg::StateAttribute::ON);
+
+        osg::ref_ptr<osg::LightModel> lightmodel = new osg::LightModel;
+        lightmodel->setAmbientIntensity(osg::Vec4(0.0, 0.0, 0.0, 1.0));
+        stateset->setAttributeAndModes(lightmodel, osg::StateAttribute::ON);
+
+        osg::ref_ptr<osg::Light> light = new osg::Light;
+        float diffuseR = Fallback::Map::getFloat("Inventory_DirectionalDiffuseR");
+        float diffuseG = Fallback::Map::getFloat("Inventory_DirectionalDiffuseG");
+        float diffuseB = Fallback::Map::getFloat("Inventory_DirectionalDiffuseB");
+        float ambientR = Fallback::Map::getFloat("Inventory_DirectionalAmbientR");
+        float ambientG = Fallback::Map::getFloat("Inventory_DirectionalAmbientG");
+        float ambientB = Fallback::Map::getFloat("Inventory_DirectionalAmbientB");
+        float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
+        float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
+        float positionX = -std::cos(azimuth) * std::sin(altitude);
+        float positionY = std::sin(azimuth) * std::sin(altitude);
+        float positionZ = std::cos(altitude);
+        light->setPosition(osg::Vec4(positionX, positionY, positionZ, 0.0));
+        light->setDiffuse(osg::Vec4(diffuseR, diffuseG, diffuseB, 1));
+        osg::Vec4 ambientRGBA = osg::Vec4(ambientR, ambientG, ambientB, 1);
+        lightmodel->setAmbientIntensity(ambientRGBA);
+        light->setAmbient(osg::Vec4(0, 0, 0, 1));
+        light->setSpecular(osg::Vec4(0, 0, 0, 0));
+        light->setLightNum(0);
+        light->setConstantAttenuation(1.f);
+        light->setLinearAttenuation(0.f);
+        light->setQuadraticAttenuation(0.f);
+        lightManager->setSunlight(light);
+
+        osg::ref_ptr<osg::LightSource> lightSource = new osg::LightSource;
+        lightSource->setLight(light);
+        lightSource->setStateSetModes(*stateset, osg::StateAttribute::ON);
+        lightManager->addChild(lightSource);
+
+        mRTTNode->addChild(lightManager);
+
+        mNode = new osg::PositionAttitudeTransform;
+        lightManager->addChild(mNode);
+
+        if (!meshPath.empty())
+        {
+            osg::ref_ptr<osg::Node> mesh
+                = mResourceSystem->getSceneManager()->getInstance(VFS::Path::Normalized(meshPath));
+            if (mesh)
+            {
+                mNode->addChild(mesh);
+
+                // Fix alpha blending mode for RTT (same as CharacterPreview::setBlendMode).
+                SetUpBlendVisitor visitor;
+                mNode->accept(visitor);
+
+                // Auto-frame: position camera so the bounding sphere fills ~85 % of the viewport.
+                // CharacterPreviewRTTNode bakes fovY = 12.3 degrees into the perspective matrix.
+                static constexpr float fovYDeg = 12.3f;
+                const float halfFovRad = osg::DegreesToRadians(fovYDeg * 0.5f);
+                const osg::BoundingSphere bs = mNode->getBound();
+                const float radius = bs.radius() > 0.f ? static_cast<float>(bs.radius()) : 10.f;
+                // Center the lookAt on the bounding sphere center, not the world origin,
+                // so off-center meshes are still properly framed.
+                const osg::Vec3f center(
+                    static_cast<float>(bs.center().x()),
+                    static_cast<float>(bs.center().y()),
+                    static_cast<float>(bs.center().z()));
+                // znear = 4 in CharacterPreviewRTTNode; ensure we stay beyond near plane.
+                const float distance = std::max(8.f, radius * 1.15f / std::tan(halfFovRad));
+                const auto viewMatrix = osg::Matrixf::lookAt(
+                    center + osg::Vec3f(0.f, distance, 0.f), center, osg::Vec3f(0.f, 0.f, 1.f));
+                mRTTNode->setViewMatrix(viewMatrix);
+            }
+        }
+
+        mDrawOnceCallback = new DrawOnceCallback(mRTTNode->mGroup);
+        mRTTNode->addUpdateCallback(mDrawOnceCallback);
+
+        mParent->addChild(mRTTNode);
+        redraw();
+    }
+
+    ObjectPreview::~ObjectPreview()
+    {
+        mParent->removeChild(mRTTNode);
+    }
+
+    void ObjectPreview::redraw()
+    {
+        mRTTNode->setNodeMask(Mask_RenderToTexture);
+        mDrawOnceCallback->redrawNextFrame();
+    }
+
+    void ObjectPreview::setRotations(float yawRadians, float pitchRadians)
+    {
+        mYawRadians   = yawRadians;
+        mPitchRadians = pitchRadians;
+        // Apply yaw (Z) first, then pitch (X) on top — same convention as RaceSelectionPreview.
+        mNode->setAttitude(
+            osg::Quat(yawRadians, osg::Vec3f(0.f, 0.f, 1.f))
+            * osg::Quat(pitchRadians, osg::Vec3f(1.f, 0.f, 0.f)));
+        redraw();
+    }
+
+    osg::ref_ptr<osg::Texture2D> ObjectPreview::getTexture()
+    {
+        return static_cast<osg::Texture2D*>(mRTTNode->getColorTexture(nullptr));
+    }
+
+    // --------------------------------------------------------------------------------------------------
+
     RaceSelectionPreview::RaceSelectionPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem)
         : CharacterPreview(
             parent, resourceSystem, MWMechanics::getPlayer(), 512, 512, osg::Vec3f(0, 125, 8), osg::Vec3f(0, 0, 8))
