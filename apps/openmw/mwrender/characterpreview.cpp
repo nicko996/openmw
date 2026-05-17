@@ -658,14 +658,15 @@ namespace MWRender
         mDrawOnceCallback->redrawNextFrame();
     }
 
-    void ObjectPreview::setRotations(float yawRadians, float pitchRadians)
+    void ObjectPreview::setRotations(float yawRadians, float pitchRadians, float rollRadians)
     {
         mYawRadians   = yawRadians;
         mPitchRadians = pitchRadians;
-        // Apply yaw (Z) first, then pitch (X) on top — same convention as RaceSelectionPreview.
+        mRollRadians  = rollRadians;
         mNode->setAttitude(
             osg::Quat(yawRadians, osg::Vec3f(0.f, 0.f, 1.f))
-            * osg::Quat(pitchRadians, osg::Vec3f(1.f, 0.f, 0.f)));
+            * osg::Quat(pitchRadians, osg::Vec3f(1.f, 0.f, 0.f))
+            * osg::Quat(rollRadians, osg::Vec3f(0.f, 1.f, 0.f)));
         redraw();
     }
 

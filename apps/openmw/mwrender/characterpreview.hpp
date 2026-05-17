@@ -121,10 +121,15 @@ namespace MWRender
         /// Rotate the mesh.
         /// \param yawRadians    Spin around the vertical (Z) axis, in radians.
         /// \param pitchRadians  Tilt around the lateral (X) axis, in radians.
-        void setRotations(float yawRadians, float pitchRadians);
+        /// \param rollRadians   Tilt around the forward (Y) axis, in radians.
+        void setRotations(float yawRadians, float pitchRadians, float rollRadians = 0.f);
 
         float getYaw() const { return mYawRadians; }
         float getPitch() const { return mPitchRadians; }
+        float getRoll() const { return mRollRadians; }
+
+        int getTextureWidth() const { return mSizeX; }
+        int getTextureHeight() const { return mSizeY; }
 
         osg::ref_ptr<osg::Texture2D> getTexture();
         /// Get the osg::StateSet required to render the texture correctly, if any.
@@ -139,6 +144,9 @@ namespace MWRender
         osg::ref_ptr<osg::PositionAttitudeTransform>  mNode;
         float mYawRadians   = 0.f;
         float mPitchRadians = 0.f;
+        float mRollRadians  = 0.f;
+        int mSizeX = 512;
+        int mSizeY = 512;
     };
 
     class UpdateCameraCallback;

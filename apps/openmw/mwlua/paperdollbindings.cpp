@@ -29,6 +29,16 @@ namespace MWLua
             mPreview->update();
     }
 
+    void LuaCharacterPreview::setActor(const MWWorld::Ptr& newActor)
+    {
+        if (mPreview)
+        {
+            mPreview->updatePtr(newActor);
+            mPreview->rebuild();
+            mPreview->update();
+        }
+    }
+
     void LuaCharacterPreview::setRotation(float angleRadians)
     {
         if (mPreview)
@@ -38,6 +48,16 @@ namespace MWLua
     float LuaCharacterPreview::getRotation() const
     {
         return mPreview ? mPreview->getRotation() : 0.f;
+    }
+
+    int LuaCharacterPreview::getTextureWidth() const
+    {
+        return mPreview ? mPreview->getTextureWidth() : 0;
+    }
+
+    int LuaCharacterPreview::getTextureHeight() const
+    {
+        return mPreview ? mPreview->getTextureHeight() : 0;
     }
 
     MyGUI::ITexture* LuaCharacterPreview::getMyGUITexture()
@@ -59,16 +79,10 @@ namespace MWLua
 
     LuaObjectPreview::~LuaObjectPreview() = default;
 
-    void LuaObjectPreview::redraw()
+    void LuaObjectPreview::setRotations(float yawRadians, float pitchRadians, float rollRadians)
     {
         if (mPreview)
-            mPreview->redraw();
-    }
-
-    void LuaObjectPreview::setRotations(float yawRadians, float pitchRadians)
-    {
-        if (mPreview)
-            mPreview->setRotations(yawRadians, pitchRadians);
+            mPreview->setRotations(yawRadians, pitchRadians, rollRadians);
     }
 
     float LuaObjectPreview::getYaw() const
@@ -79,6 +93,21 @@ namespace MWLua
     float LuaObjectPreview::getPitch() const
     {
         return mPreview ? mPreview->getPitch() : 0.f;
+    }
+
+    float LuaObjectPreview::getRoll() const
+    {
+        return mPreview ? mPreview->getRoll() : 0.f;
+    }
+
+    int LuaObjectPreview::getTextureWidth() const
+    {
+        return mPreview ? mPreview->getTextureWidth() : 0;
+    }
+
+    int LuaObjectPreview::getTextureHeight() const
+    {
+        return mPreview ? mPreview->getTextureHeight() : 0;
     }
 
     MyGUI::ITexture* LuaObjectPreview::getMyGUITexture()

@@ -53,12 +53,18 @@ namespace MWLua
         /// Re-render the character (call after equipment changes).
         void update();
 
+        /// Switch to a different actor. Rebuilds the animation and updates equipment display.
+        void setActor(const MWWorld::Ptr& newActor);
+
         /// Rotate the character model around the vertical axis (delegates to InventoryPreview).
         /// \param angleRadians  Yaw angle in radians.
         void setRotation(float angleRadians);
 
         /// Return the current yaw in radians (as set by the last setRotation call).
         float getRotation() const;
+
+        int getTextureWidth() const;
+        int getTextureHeight() const;
 
         /// Raw pointer to the MyGUI texture wrapping the OSG RTT result.
         /// Valid as long as this object is alive.
@@ -82,16 +88,18 @@ namespace MWLua
             const std::string& meshPath);
         ~LuaObjectPreview();
 
-        /// Re-render the mesh (e.g. after calling setRotations).
-        void redraw();
-
         /// Rotate the mesh.
         /// \param yawRadians    Spin around the vertical (Z) axis, in radians.
         /// \param pitchRadians  Tilt around the lateral (X) axis, in radians.
-        void setRotations(float yawRadians, float pitchRadians);
+        /// \param rollRadians   Tilt around the forward (Y) axis, in radians.
+        void setRotations(float yawRadians, float pitchRadians, float rollRadians = 0.f);
 
         float getYaw() const;
         float getPitch() const;
+        float getRoll() const;
+
+        int getTextureWidth() const;
+        int getTextureHeight() const;
 
         /// Raw pointer to the MyGUI texture wrapping the OSG RTT result.
         /// Valid as long as this object is alive.

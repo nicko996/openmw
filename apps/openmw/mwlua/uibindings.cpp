@@ -307,9 +307,13 @@ namespace MWLua
         // -- Character preview (paper doll) API --
         // ui.newCharacterPreview({ actor = someGameObject })
         //   Returns a table with:
-        //     .textureResource  -- pass as "resource" prop to a TYPE.Image widget
-        //     :update()         -- re-render after equipment changes
-        //     :destroy()        -- release the preview and its GPU texture
+        //     .textureResource       -- pass as "resource" prop to a TYPE.Image widget
+        //     :update()              -- re-render after equipment changes
+        //     :setActor(gameObject)  -- switch to a different NPC (rebuilds animation)
+        //     :setRotation(radians)  -- yaw around vertical axis
+        //     :getRotation()         -- current yaw in radians
+        //     :getTextureSize()      -- Vec2f(width, height) of the RTT texture
+        //     :destroy()             -- release the preview and its GPU texture
         api["newCharacterPreview"]
             = [luaManager = context.mLuaManager](const sol::table& options) -> sol::table {
                   sol::object actorObj = LuaUtil::getFieldOrNil(options, "actor");
@@ -342,8 +346,18 @@ namespace MWLua
                   sol::table result(lua, sol::create);
                   result["textureResource"] = textureResource;
                   result["update"] = [preview]() { preview->update(); };
+                  result["setActor"] = [preview](const LObject& actor) {
+                      if (actor.ptr().getType() != ESM::NPC::sRecordId)
+                          throw std::runtime_error("setActor: actor must be an NPC");
+                      preview->setActor(actor.ptr());
+                  };
                   result["setRotation"] = [preview](float angle) { preview->setRotation(angle); };
                   result["getRotation"] = [preview]() { return preview->getRotation(); };
+                  result["getTextureSize"] = [preview]() {
+                      return osg::Vec2f(
+                          static_cast<float>(preview->getTextureWidth()),
+                          static_cast<float>(preview->getTextureHeight()));
+                  };
                   result["destroy"] = [textureResource]() mutable {
                       // Nullify the dynamic texture so the Image widget stops using it,
                       // then drop the owner so the preview and OSGTexture are freed.
@@ -356,11 +370,13 @@ namespace MWLua
         // -- Object/item preview API --
         // ui.newObjectPreview({ object = someGameObject })
         //   Returns a table with:
-        //     .textureResource          -- pass as "resource" prop to a TYPE.Image widget
-        //     :setRotations(yaw, pitch) -- rotate mesh (radians); yaw=Z spin, pitch=X tilt
-        //     :getYaw()                 -- current yaw in radians
-        //     :getPitch()               -- current pitch in radians
-        //     :destroy()                -- release the preview and its GPU texture
+        //     .textureResource                -- pass as "resource" prop to a TYPE.Image widget
+        //     :setRotations(yaw, pitch[,roll]) -- rotate mesh (radians); yaw=Z, pitch=X, roll=Y
+        //     :getYaw()                       -- current yaw in radians
+        //     :getPitch()                     -- current pitch in radians
+        //     :getRoll()                      -- current roll in radians
+        //     :getTextureSize()               -- Vec2f(width, height) of the RTT texture
+        //     :destroy()                      -- release the preview and its GPU texture
         //
         // Works with any game object that has a model (weapons, armor, misc items,
         // ingredients, etc.).  Does NOT require an NPC skeleton.
@@ -390,9 +406,17 @@ namespace MWLua
                   sol::state_view lua = options.lua_state();
                   sol::table result(lua, sol::create);
                   result["textureResource"] = textureResource;
-                  result["setRotations"] = [preview](float yaw, float pitch) { preview->setRotations(yaw, pitch); };
-                  result["getYaw"]       = [preview]() { return preview->getYaw(); };
-                  result["getPitch"]     = [preview]() { return preview->getPitch(); };
+                  result["setRotations"] = [preview](float yaw, float pitch, sol::optional<float> roll) {
+                      preview->setRotations(yaw, pitch, roll.value_or(0.f));
+                  };
+                  result["getYaw"]   = [preview]() { return preview->getYaw(); };
+                  result["getPitch"] = [preview]() { return preview->getPitch(); };
+                  result["getRoll"]  = [preview]() { return preview->getRoll(); };
+                  result["getTextureSize"] = [preview]() {
+                      return osg::Vec2f(
+                          static_cast<float>(preview->getTextureWidth()),
+                          static_cast<float>(preview->getTextureHeight()));
+                  };
                   result["destroy"] = [textureResource]() mutable {
                       textureResource->mDynamicTexture = nullptr;
                       textureResource->mDynamicOwner.reset();
