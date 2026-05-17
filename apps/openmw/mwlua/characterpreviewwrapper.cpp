@@ -6,7 +6,6 @@
 #include <components/myguiplatform/myguitexture.hpp>
 
 #include "../mwrender/characterpreview.hpp"
-#include "../mwworld/ptr.hpp"
 
 namespace MWLua
 {

@@ -18,7 +18,6 @@
 #include "object.hpp"
 
 #include <components/esm3/loadnpc.hpp>
-#include <components/sceneutil/lightmanager.hpp>
 
 #include "../mwbase/environment.hpp"
 #include "../mwbase/windowmanager.hpp"
