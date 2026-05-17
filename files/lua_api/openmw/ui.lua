@@ -323,4 +323,166 @@
 -- @field openmw.util#Vector2 offset Offset of this resource in the texture. (0, 0) by default
 -- @field openmw.util#Vector2 size Size of the resource in the texture. (0, 0) by default. 0 means the whole texture size is used.
 
+---
+-- Create a render-to-texture preview of an NPC character (paper doll).
+-- The returned @{#CharacterPreview} contains a @{#TextureResource} that can be
+-- used directly as the `resource` property of a @{openmw_ui_widget_image} widget.
+-- The preview uses the same lighting and camera as the built-in inventory screen.
+-- @function [parent=#ui] newCharacterPreview
+-- @param #CharacterPreviewOptions options
+-- @return #CharacterPreview
+-- @usage
+-- local ui   = require('openmw.ui')
+-- local util = require('openmw.util')
+-- local self = require('openmw.self')
+--
+-- local preview = ui.newCharacterPreview({ actor = self })
+-- local element = ui.create({
+--     type  = ui.TYPE.Image,
+--     layer = 'Windows',
+--     props = {
+--         resource     = preview.textureResource,
+--         size         = util.vector2(256, 512),
+--     },
+-- })
+-- -- Re-render after equipping an item:
+-- preview.update()
+-- -- Rotate 90 degrees:
+-- preview.setRotation(math.pi / 2)
+-- -- Switch to a different NPC:
+-- preview.setActor(someOtherNpc)
+-- -- Release when no longer needed:
+-- preview.destroy()
+
+---
+-- Table with arguments passed to @{#ui.newCharacterPreview}.
+-- @type CharacterPreviewOptions
+-- @field openmw.core#GameObject actor The NPC whose equipment will be rendered. Must be of type NPC. Required.
+
+---
+-- A live render-to-texture preview of an NPC character, returned by @{#ui.newCharacterPreview}.
+-- @type CharacterPreview
+
+---
+-- A @{#TextureResource} containing the rendered character. Pass it as the
+-- `resource` property of a @{openmw_ui_widget_image} widget.
+-- @field [parent=#CharacterPreview] #TextureResource textureResource
+
+---
+-- Re-render the character. Call this after equipment changes on the actor.
+-- @function [parent=#CharacterPreview] update
+-- @param self
+
+---
+-- Switch the preview to a different NPC. Rebuilds the character animation and
+-- updates the equipment display.
+-- @function [parent=#CharacterPreview] setActor
+-- @param self
+-- @param openmw.core#GameObject actor The new NPC to display. Must be of type NPC.
+
+---
+-- Rotate the character around the vertical (Z) axis.
+-- @function [parent=#CharacterPreview] setRotation
+-- @param self
+-- @param #number angleRadians Yaw angle in radians.
+
+---
+-- Return the current yaw applied by @{#CharacterPreview.setRotation}.
+-- @function [parent=#CharacterPreview] getRotation
+-- @param self
+-- @return #number angleRadians
+
+---
+-- Return the size of the underlying RTT texture as a Vector2(width, height).
+-- @function [parent=#CharacterPreview] getTextureSize
+-- @param self
+-- @return openmw.util#Vector2
+
+---
+-- Release the preview and its GPU texture. After calling this the
+-- @{#TextureResource} must no longer be used.
+-- @function [parent=#CharacterPreview] destroy
+-- @param self
+
+---
+-- Create a render-to-texture preview of a single game object mesh (weapon, armor,
+-- ingredient, etc.). Does not require an NPC or skeleton.
+-- The returned @{#ObjectPreview} contains a @{#TextureResource} that can be
+-- used directly as the `resource` property of a @{openmw_ui_widget_image} widget.
+-- @function [parent=#ui] newObjectPreview
+-- @param #ObjectPreviewOptions options
+-- @return #ObjectPreview
+-- @usage
+-- local ui   = require('openmw.ui')
+-- local util = require('openmw.util')
+--
+-- local preview = ui.newObjectPreview({ object = mySword })
+-- local element = ui.create({
+--     type  = ui.TYPE.Image,
+--     layer = 'Windows',
+--     props = {
+--         resource = preview.textureResource,
+--         size     = util.vector2(128, 128),
+--     },
+-- })
+-- -- Spin the mesh (yaw=Z spin, pitch=X tilt, roll=Y tilt):
+-- preview.setRotations(math.pi / 4, 0.2, 0)
+-- -- Read back the current angles:
+-- print(preview.getYaw(), preview.getPitch(), preview.getRoll())
+-- -- Release when no longer needed:
+-- preview.destroy()
+
+---
+-- Table with arguments passed to @{#ui.newObjectPreview}.
+-- @type ObjectPreviewOptions
+-- @field openmw.core#GameObject object The game object whose model will be rendered. Must have a mesh. Required.
+
+---
+-- A live render-to-texture preview of a single mesh, returned by @{#ui.newObjectPreview}.
+-- @type ObjectPreview
+
+---
+-- A @{#TextureResource} containing the rendered mesh. Pass it as the
+-- `resource` property of a @{openmw_ui_widget_image} widget.
+-- @field [parent=#ObjectPreview] #TextureResource textureResource
+
+---
+-- Rotate the mesh.
+-- The rotation order is: yaw (Z) applied first, then pitch (X), then roll (Y).
+-- @function [parent=#ObjectPreview] setRotations
+-- @param self
+-- @param #number yawRadians   Spin around the vertical (Z) axis. Required.
+-- @param #number pitchRadians Tilt around the lateral (X) axis. Required.
+-- @param #number rollRadians  Tilt around the forward (Y) axis. Optional, defaults to 0.
+
+---
+-- Return the current yaw in radians.
+-- @function [parent=#ObjectPreview] getYaw
+-- @param self
+-- @return #number
+
+---
+-- Return the current pitch in radians.
+-- @function [parent=#ObjectPreview] getPitch
+-- @param self
+-- @return #number
+
+---
+-- Return the current roll in radians.
+-- @function [parent=#ObjectPreview] getRoll
+-- @param self
+-- @return #number
+
+---
+-- Return the size of the underlying RTT texture as a Vector2(width, height).
+-- @function [parent=#ObjectPreview] getTextureSize
+-- @param self
+-- @return openmw.util#Vector2
+
+---
+-- Release the preview and its GPU texture. After calling this the
+-- @{#TextureResource} must no longer be used.
+-- @function [parent=#ObjectPreview] destroy
+-- @param self
+
 return nil
