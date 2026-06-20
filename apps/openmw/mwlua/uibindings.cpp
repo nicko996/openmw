@@ -15,6 +15,7 @@
 #include "characterpreviewwrapper.hpp"
 #include "context.hpp"
 #include "luamanagerimp.hpp"
+#include "mapbindings.hpp"
 #include "object.hpp"
 
 #include <components/esm3/loadnpc.hpp>
@@ -383,6 +384,33 @@ namespace MWLua
                   return preview;
               };
 
+        // -- World/local map API --
+        // ui.newWorldMap() / ui.newLocalMap(); see files/lua_api/openmw/ui.lua for documentation.
+        api["newWorldMap"] = [luaManager = context.mLuaManager]() -> std::shared_ptr<LuaWorldMap> {
+            MWRender::GlobalMap* globalMap = MWBase::Environment::get().getWindowManager()->getGlobalMapRender();
+            if (globalMap == nullptr)
+                return nullptr;
+
+            auto worldMap = std::make_shared<LuaWorldMap>(globalMap);
+
+            LuaUi::TextureData base;
+            base.mFlipV = true;
+            worldMap->setBaseResource(luaManager->uiResourceManager()->registerTexture(std::move(base)));
+            LuaUi::TextureData overlay;
+            overlay.mFlipV = true;
+            worldMap->setOverlayResource(luaManager->uiResourceManager()->registerTexture(std::move(overlay)));
+
+            luaManager->addAction([worldMap] { worldMap->doConstruct(); }, "WorldMap construct");
+            return worldMap;
+        };
+
+        api["newLocalMap"] = [luaManager = context.mLuaManager]() -> std::shared_ptr<LuaLocalMap> {
+            MWRender::LocalMap* localMap = MWBase::Environment::get().getWindowManager()->getLocalMapRender();
+            if (localMap == nullptr)
+                return nullptr;
+            return std::make_shared<LuaLocalMap>(localMap, luaManager->uiResourceManager());
+        };
+
         return api;
     }
 
@@ -477,6 +505,87 @@ namespace MWLua
             objPreview["destroy"]
                 = [luaManager = context.mLuaManager](const std::shared_ptr<LuaObjectPreview>& p) {
                       luaManager->addAction([p] { p->doDestroy(); }, "ObjectPreview destroy");
+                  };
+
+            // -- WorldMap usertype -------------------------------------------------------------------
+            auto worldMap = context.sol().new_usertype<LuaWorldMap>("WorldMap");
+            worldMap["baseTexture"]
+                = sol::readonly_property([](const LuaWorldMap& m) { return m.baseTexture(); });
+            worldMap["overlayTexture"]
+                = sol::readonly_property([](const LuaWorldMap& m) { return m.overlayTexture(); });
+            worldMap["getImageSize"] = [](const LuaWorldMap& m) {
+                return osg::Vec2f(static_cast<float>(m.width()), static_cast<float>(m.height()));
+            };
+            worldMap["worldToImage"] = [](LuaWorldMap& m, float x, float y) { return m.worldToImage(x, y); };
+            worldMap["markers"] = [](const LuaWorldMap& m, sol::this_state ts) {
+                sol::state_view lua(ts);
+                sol::table array = lua.create_table();
+                int i = 1;
+                for (const auto& mk : m.markers())
+                {
+                    sol::table t = lua.create_table();
+                    t["name"] = mk.name;
+                    t["x"] = mk.x;
+                    t["y"] = mk.y;
+                    array[i++] = t;
+                }
+                return array;
+            };
+            worldMap["destroy"]
+                = [luaManager = context.mLuaManager](const std::shared_ptr<LuaWorldMap>& m) {
+                      luaManager->addAction([m] { m->doDestroy(); }, "WorldMap destroy");
+                  };
+
+            // -- LocalMap usertype -------------------------------------------------------------------
+            auto localMap = context.sol().new_usertype<LuaLocalMap>("LocalMap");
+            localMap["isExterior"] = [](const LuaLocalMap& m) { return m.isExterior(); };
+            localMap["segments"] = [](LuaLocalMap& m, sol::this_state ts) {
+                sol::state_view lua(ts);
+                sol::table array = lua.create_table();
+                int i = 1;
+                for (const auto& segment : m.segments())
+                {
+                    sol::table entry = lua.create_table();
+                    entry["gridX"] = segment.x;
+                    entry["gridY"] = segment.y;
+                    entry["mapTexture"] = segment.mapTexture;
+                    if (segment.fogTexture)
+                        entry["fogTexture"] = segment.fogTexture;
+                    array[i++] = entry;
+                }
+                return array;
+            };
+            localMap["worldToMap"] = [](const LuaLocalMap& m, float x, float y, sol::this_state ts) {
+                sol::state_view lua(ts);
+                const LuaLocalMap::MapPosition pos = m.worldToMap(x, y);
+                sol::table result = lua.create_table();
+                result["segX"] = pos.segX;
+                result["segY"] = pos.segY;
+                result["nx"] = pos.nx;
+                result["ny"] = pos.ny;
+                return result;
+            };
+            localMap["isPositionExplored"]
+                = [](const LuaLocalMap& m, int segX, int segY, float nx, float ny) {
+                      return m.isPositionExplored(segX, segY, nx, ny);
+                  };
+            localMap["doorMarkers"] = [](const LuaLocalMap& m, sol::this_state ts) {
+                sol::state_view lua(ts);
+                sol::table array = lua.create_table();
+                int i = 1;
+                for (const auto& d : m.doorMarkers())
+                {
+                    sol::table t = lua.create_table();
+                    t["name"] = d.name;
+                    t["x"] = d.x;
+                    t["y"] = d.y;
+                    array[i++] = t;
+                }
+                return array;
+            };
+            localMap["destroy"]
+                = [luaManager = context.mLuaManager](const std::shared_ptr<LuaLocalMap>& m) {
+                      luaManager->addAction([m] { m->doDestroy(); }, "LocalMap destroy");
                   };
         }
 

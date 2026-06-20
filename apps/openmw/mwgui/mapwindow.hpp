@@ -10,6 +10,8 @@
 
 #include "windowpinnablebase.hpp"
 
+#include "../mwbase/windowmanager.hpp"
+
 #include <components/esm3/custommarkerstate.hpp>
 #include <components/misc/constants.hpp>
 
@@ -239,6 +241,12 @@ namespace MWGui
         void setVisible(bool visible) override;
 
         void renderGlobalMap();
+
+        /// The global (province) map renderer, owned by this window. Used by the Lua map bindings.
+        MWRender::GlobalMap* getGlobalMapRender() { return mGlobalMapRender.get(); }
+
+        /// Discovered named exterior locations (world position = cell centre), for the Lua world map.
+        std::vector<MWBase::WindowManager::MapMarker> getDiscoveredMarkers() const;
 
         /// adds the marker to the global map
         /// @param name The ESM::Cell::mName

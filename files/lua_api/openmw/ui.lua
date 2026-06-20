@@ -506,4 +506,130 @@
 -- @function [parent=#ObjectPreview] destroy
 -- @param self
 
+---
+-- Expose the engine's world (province) map as a @{#WorldMap}. The returned object
+-- provides the rendered base map and the explored overlay as @{#TextureResource}s
+-- (usable directly as the `resource` of @{openmw_ui_widget_image} widgets), plus a
+-- world-to-image projection for placing markers.
+--
+-- The province base map is generated on the next synchronized frame if it has not
+-- been built yet; the widget will show it from that frame onward. Returns `nil` if
+-- the map renderer is not available yet (very early in startup).
+-- Only available in player and menu scripts.
+-- @function [parent=#ui] newWorldMap
+-- @return #WorldMap
+-- @usage
+-- local ui   = require('openmw.ui')
+-- local util = require('openmw.util')
+-- local self = require('openmw.self')
+--
+-- local world = ui.newWorldMap()
+-- local element = ui.create({
+--     type  = ui.TYPE.Image,
+--     props = { resource = world.baseTexture, size = util.vector2(600, 600) },
+-- })
+-- -- Project the player position onto the map image (in image pixels):
+-- local p  = self.position
+-- local px = world:worldToImage(p.x, p.y)
+-- world:destroy()
+
+---
+-- The engine world/province map, returned by @{#ui.newWorldMap}.
+-- @type WorldMap
+
+---
+-- A @{#TextureResource} with the rendered province map.
+-- @field [parent=#WorldMap] #TextureResource baseTexture
+
+---
+-- A @{#TextureResource} with the explored-area overlay, drawn on top of the base map.
+-- @field [parent=#WorldMap] #TextureResource overlayTexture
+
+---
+-- Size of the map image in pixels, as a Vector2(width, height).
+-- @function [parent=#WorldMap] getImageSize
+-- @param self
+-- @return openmw.util#Vector2
+
+---
+-- Project a world position to map-image pixel coordinates.
+-- @function [parent=#WorldMap] worldToImage
+-- @param self
+-- @param #number x World X.
+-- @param #number y World Y.
+-- @return openmw.util#Vector2 Pixel position in the map image (same space as @{#WorldMap.getImageSize}).
+
+---
+-- Release the map textures. After calling this the texture resources must no longer be used.
+-- @function [parent=#WorldMap] destroy
+-- @param self
+
+---
+-- Expose the engine's local map (the current cell) as a @{#LocalMap}. Returns the
+-- per-segment map and fog-of-war textures the engine has currently rendered around
+-- the player, plus a world-to-map projection and an explored test.
+--
+-- Only the segments the engine has already rendered are returned; there is no
+-- on-demand rendering of arbitrary cells. Returns `nil` if the map renderer is not
+-- available yet. Only available in player and menu scripts.
+-- @function [parent=#ui] newLocalMap
+-- @return #LocalMap
+-- @usage
+-- local ui   = require('openmw.ui')
+-- local util = require('openmw.util')
+-- local self = require('openmw.self')
+--
+-- local lm = ui.newLocalMap()
+-- for _, seg in ipairs(lm:segments()) do
+--     -- seg = { gridX, gridY, mapTexture, fogTexture? }
+--     -- build an Image for seg.mapTexture (and seg.fogTexture if present),
+--     -- positioning it on a grid by (seg.gridX, seg.gridY)
+-- end
+-- local p = self.position
+-- local m = lm:worldToMap(p.x, p.y)        -- { segX, segY, nx, ny }
+-- local explored = lm:isPositionExplored(m.segX, m.segY, m.nx, m.ny)
+-- lm:destroy()
+
+---
+-- The engine local map (current cell), returned by @{#ui.newLocalMap}.
+-- @type LocalMap
+
+---
+-- Whether the player is currently in an exterior cell.
+-- @function [parent=#LocalMap] isExterior
+-- @param self
+-- @return #boolean
+
+---
+-- Rebuild and return the list of currently rendered map segments. Each entry is a
+-- table `{ gridX = #number, gridY = #number, mapTexture = #TextureResource, fogTexture = #TextureResource }`
+-- where `fogTexture` may be absent. The returned resources are pooled and reused, so
+-- do not retain them across calls — call this again after a cell change to refresh.
+-- @function [parent=#LocalMap] segments
+-- @param self
+-- @return #table Array of segment tables.
+
+---
+-- Project a world position to a segment and a normalized position within it.
+-- @function [parent=#LocalMap] worldToMap
+-- @param self
+-- @param #number x World X.
+-- @param #number y World Y.
+-- @return #table `{ segX = #number, segY = #number, nx = #number, ny = #number }` (nx, ny in [0, 1]).
+
+---
+-- Whether a normalized position within a segment has been explored (not hidden by fog of war).
+-- @function [parent=#LocalMap] isPositionExplored
+-- @param self
+-- @param #number segX Segment grid X (as returned by @{#LocalMap.worldToMap} or @{#LocalMap.segments}).
+-- @param #number segY Segment grid Y.
+-- @param #number nx Normalized X within the segment, [0, 1].
+-- @param #number ny Normalized Y within the segment, [0, 1].
+-- @return #boolean
+
+---
+-- Release the map textures. After calling this the texture resources must no longer be used.
+-- @function [parent=#LocalMap] destroy
+-- @param self
+
 return nil

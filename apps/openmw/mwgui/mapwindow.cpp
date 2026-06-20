@@ -1159,6 +1159,20 @@ namespace MWGui
         }
     }
 
+    std::vector<MWBase::WindowManager::MapMarker> MapWindow::getDiscoveredMarkers() const
+    {
+        std::vector<MWBase::WindowManager::MapMarker> out;
+        out.reserve(mGlobalMapMarkersByName.size());
+        for (const auto& [name, marker] : mGlobalMapMarkersByName)
+        {
+            // marker.position is in exterior cell-grid coordinates; report the cell centre in world units.
+            out.push_back({ name,
+                (marker.position.x() + 0.5f) * Constants::CellSizeInUnits,
+                (marker.position.y() + 0.5f) * Constants::CellSizeInUnits });
+        }
+        return out;
+    }
+
     void MapWindow::cellExplored(int x, int y)
     {
         mGlobalMapRender->cleanupCameras();

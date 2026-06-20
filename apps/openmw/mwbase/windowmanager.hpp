@@ -57,6 +57,12 @@ namespace MWWorld
     class Ptr;
 }
 
+namespace MWRender
+{
+    class LocalMap;
+    class GlobalMap;
+}
+
 namespace MWGui
 {
     class Layout;
@@ -214,6 +220,21 @@ namespace MWBase
 
         /// sets the visibility of the hud minimap
         virtual void setMinimapVisibility(bool visible) = 0;
+
+        /// Local/global map renderers, for the Lua map bindings (ui.newLocalMap / ui.newWorldMap).
+        /// May return nullptr very early in startup before the map windows exist.
+        virtual MWRender::LocalMap* getLocalMapRender() = 0;
+        virtual MWRender::GlobalMap* getGlobalMapRender() = 0;
+
+        /// A discovered (visited) named exterior location on the world map.
+        struct MapMarker
+        {
+            std::string mName;
+            float mX; // world position (cell centre)
+            float mY;
+        };
+        /// The named exterior locations the player has discovered, for the Lua world map markers.
+        virtual std::vector<MapMarker> getDiscoveredMapMarkers() = 0;
         virtual void setWeaponVisibility(bool visible) = 0;
         virtual void setSpellVisibility(bool visible) = 0;
         virtual void setSneakVisibility(bool visible) = 0;

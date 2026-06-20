@@ -1163,6 +1163,23 @@ namespace MWGui
         mHud->setMinimapVisible(visible);
     }
 
+    MWRender::LocalMap* WindowManager::getLocalMapRender()
+    {
+        return mLocalMapRender.get();
+    }
+
+    MWRender::GlobalMap* WindowManager::getGlobalMapRender()
+    {
+        return mMap ? mMap->getGlobalMapRender() : nullptr;
+    }
+
+    std::vector<MWBase::WindowManager::MapMarker> WindowManager::getDiscoveredMapMarkers()
+    {
+        if (!mMap)
+            return {};
+        return mMap->getDiscoveredMarkers();
+    }
+
     bool WindowManager::toggleFogOfWar()
     {
         mMap->toggleFogOfWar();

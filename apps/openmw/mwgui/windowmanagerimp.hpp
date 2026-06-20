@@ -228,6 +228,11 @@ namespace MWGui
         void setHMSVisibility(bool visible) override;
         // sets the visibility of the hud minimap
         void setMinimapVisibility(bool visible) override;
+
+        MWRender::LocalMap* getLocalMapRender() override;
+        MWRender::GlobalMap* getGlobalMapRender() override;
+        std::vector<MapMarker> getDiscoveredMapMarkers() override;
+
         void setWeaponVisibility(bool visible) override;
         void setSpellVisibility(bool visible) override;
         void setSneakVisibility(bool visible) override;
