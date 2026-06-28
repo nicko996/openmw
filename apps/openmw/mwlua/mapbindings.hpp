@@ -58,6 +58,7 @@ namespace MWLua
         int height() const;
         osg::Vec2f worldToImage(float x, float y);
         std::vector<Marker> markers() const;
+        float playerArrowAngle() const; // radians, ready for the Image `rotation` property
 
         // OSG-touching; call from a LuaManager::addAction.
         void doConstruct();
@@ -119,6 +120,7 @@ namespace MWLua
         std::vector<Door> doorMarkers() const;
 
         MapPosition worldToMap(float x, float y) const;
+        float playerArrowAngle() const; // radians, ready for the Image `rotation` property
         bool isPositionExplored(int segX, int segY, float nx, float ny) const;
 
         void doDestroy();

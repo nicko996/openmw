@@ -517,6 +517,7 @@ namespace MWLua
                 return osg::Vec2f(static_cast<float>(m.width()), static_cast<float>(m.height()));
             };
             worldMap["worldToImage"] = [](LuaWorldMap& m, float x, float y) { return m.worldToImage(x, y); };
+            worldMap["playerArrowAngle"] = [](const LuaWorldMap& m) { return m.playerArrowAngle(); };
             worldMap["markers"] = [](const LuaWorldMap& m, sol::this_state ts) {
                 sol::state_view lua(ts);
                 sol::table array = lua.create_table();
@@ -565,6 +566,7 @@ namespace MWLua
                 result["ny"] = pos.ny;
                 return result;
             };
+            localMap["playerArrowAngle"] = [](const LuaLocalMap& m) { return m.playerArrowAngle(); };
             localMap["isPositionExplored"]
                 = [](const LuaLocalMap& m, int segX, int segY, float nx, float ny) {
                       return m.isPositionExplored(segX, segY, nx, ny);

@@ -79,6 +79,10 @@ namespace MWRender
         void updatePlayer(const osg::Vec3f& position, const osg::Quat& orientation, float& u, float& v, int& x, int& y,
             osg::Vec3f& direction);
 
+        /// Player facing direction projected onto the map plane. Interior maps include the cell's
+        /// map-rotation correction (mAngle); exteriors are north-up. Mirrors updatePlayer's direction.
+        osg::Vec3f getPlayerDirection(const osg::Quat& orientation) const;
+
         /**
          * Save the fog of war for this cell to its CellStore.
          * @remarks This should be called when unloading a cell, and for all active cells prior to saving the game.

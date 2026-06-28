@@ -5,6 +5,7 @@
 
 #include <MyGUI_Types.h>
 
+#include <osg/Quat>
 #include <osg/Texture2D>
 
 #include <components/misc/constants.hpp>
@@ -128,6 +129,19 @@ namespace MWLua
         for (const auto& m : MWBase::Environment::get().getWindowManager()->getDiscoveredMapMarkers())
             out.push_back({ m.mName, m.mX, m.mY });
         return out;
+    }
+
+    float LuaWorldMap::playerArrowAngle() const
+    {
+        MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
+        if (player.isEmpty())
+            return 0.f;
+        // Same orientation construction as WindowManager::updateMap (yaw around Z).
+        const float yaw = player.getRefData().getPosition().rot[2];
+        osg::Quat orientation(-yaw, osg::Vec3(0, 0, 1));
+        // World map is always north-up: no interior correction.
+        osg::Vec3f dir = orientation * osg::Vec3f(0, 1, 0);
+        return std::atan2(dir.x(), dir.y());
     }
 
     void LuaWorldMap::doConstruct()
@@ -272,6 +286,21 @@ namespace MWLua
             mLocalMap->worldToInteriorMapPosition(osg::Vec2f(x, y), pos.nx, pos.ny, pos.segX, pos.segY);
         }
         return pos;
+    }
+
+    float LuaLocalMap::playerArrowAngle() const
+    {
+        if (!mLocalMap)
+            return 0.f;
+        MWWorld::Ptr player = MWBase::Environment::get().getWorld()->getPlayerPtr();
+        if (player.isEmpty())
+            return 0.f;
+        // Same orientation construction as WindowManager::updateMap (yaw around Z).
+        const float yaw = player.getRefData().getPosition().rot[2];
+        osg::Quat orientation(-yaw, osg::Vec3(0, 0, 1));
+        // getPlayerDirection applies the interior map-rotation correction when needed.
+        osg::Vec3f dir = mLocalMap->getPlayerDirection(orientation);
+        return std::atan2(dir.x(), dir.y());
     }
 
     std::vector<LuaLocalMap::Door> LuaLocalMap::doorMarkers() const

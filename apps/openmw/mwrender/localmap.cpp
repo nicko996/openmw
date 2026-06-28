@@ -475,23 +475,30 @@ namespace MWRender
         return mRoot;
     }
 
+    osg::Vec3f LocalMap::getPlayerDirection(const osg::Quat& orientation) const
+    {
+        if (mInterior)
+        {
+            osg::Quat cameraOrient(mAngle, osg::Vec3(0, 0, -1));
+            return orientation * cameraOrient.inverse() * osg::Vec3f(0, 1, 0);
+        }
+        return orientation * osg::Vec3f(0, 1, 0);
+    }
+
     void LocalMap::updatePlayer(const osg::Vec3f& position, const osg::Quat& orientation, float& u, float& v, int& x,
         int& y, osg::Vec3f& direction)
     {
+        direction = getPlayerDirection(orientation);
+
         // retrieve the x,y grid coordinates the player is in
         osg::Vec2f pos(position.x(), position.y());
 
         if (mInterior)
         {
             worldToInteriorMapPosition(pos, u, v, x, y);
-
-            osg::Quat cameraOrient(mAngle, osg::Vec3(0, 0, -1));
-            direction = orientation * cameraOrient.inverse() * osg::Vec3f(0, 1, 0);
         }
         else
         {
-            direction = orientation * osg::Vec3f(0, 1, 0);
-
             x = static_cast<int>(std::ceil(pos.x() / mMapWorldSize) - 1);
             y = static_cast<int>(std::ceil(pos.y() / mMapWorldSize) - 1);
 
