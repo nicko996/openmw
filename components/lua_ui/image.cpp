@@ -60,9 +60,26 @@ namespace LuaUi
         auto* rot = main->castType<MyGUI::RotatingSkin>(false);
         if (rot == nullptr)
             return;
+        rot->setAngle(angle);
+    }
+
+    void LuaImage::updateCoord()
+    {
+        // Applies the staged position/size to the underlying widget (updateProperties only stages it).
+        WidgetExtension::updateCoord();
+        if (!mRotating)
+            return;
+        // Now that getSize() reflects the final size, set the rotation centre to the widget midpoint.
+        // Doing this in updateProperties would use a stale size on the first build (the size is not yet
+        // applied there), rotating the image around (0,0) and displacing it until the next refresh.
+        MyGUI::ISubWidget* main = getSubWidgetMain();
+        if (main == nullptr)
+            return;
+        auto* rot = main->castType<MyGUI::RotatingSkin>(false);
+        if (rot == nullptr)
+            return;
         const MyGUI::IntSize size = getSize();
         rot->setCenter(MyGUI::IntPoint(size.width / 2, size.height / 2));
-        rot->setAngle(angle);
     }
 
     void LuaImage::updateProperties()
@@ -131,7 +148,7 @@ namespace LuaUi
 
         WidgetExtension::updateProperties();
 
-        // After the base class has applied position/size, so the centre matches the final size.
+        // Angle only; the rotation centre is set in updateCoord, once the final size is applied.
         applyRotation(rotation);
     }
 

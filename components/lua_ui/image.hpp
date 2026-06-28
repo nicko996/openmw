@@ -30,12 +30,17 @@ namespace LuaUi
     protected:
         void initialize() override;
         void updateProperties() override;
+        // Sets the rotation centre to the widget midpoint once its size has been applied. The size is
+        // only applied here (updateProperties merely stages it), so the centre must be set here or the
+        // first build rotates around a stale (0,0) origin, displacing the image until the next refresh.
+        void updateCoord() override;
         const std::vector<std::string_view>& allUsedProperties() const override;
 
         // Switches between the default tiling skin and the rotating skin, refreshing mTileRect
         // (null while rotating). No-op if already in the requested mode.
         void setRotating(bool rotating);
-        // Sets the rotation centre (widget midpoint) and angle on the RotatingSkin. No-op unless rotating.
+        // Sets the rotation angle on the RotatingSkin. No-op unless rotating. (The centre is set in
+        // updateCoord, where the widget's final size is known.)
         void applyRotation(float angle);
 
         LuaTileRect* mTileRect = nullptr;
