@@ -54,7 +54,10 @@ namespace LuaUi
     {
         if (!mRotating)
             return;
-        auto* rot = getSubWidgetMain()->castType<MyGUI::RotatingSkin>(false);
+        MyGUI::ISubWidget* main = getSubWidgetMain();
+        if (main == nullptr)
+            return;
+        auto* rot = main->castType<MyGUI::RotatingSkin>(false);
         if (rot == nullptr)
             return;
         const MyGUI::IntSize size = getSize();
@@ -116,6 +119,15 @@ namespace LuaUi
         setImageCoord(atlasCoord);
 
         setColour(propertyValue("color", MyGUI::Colour(1, 1, 1, 1)));
+
+        // When rotating, the active sub-widget is a RotatingSkin. Push the resolved texture onto its
+        // render item directly (as the dynamic-texture path does) so it is guaranteed to render,
+        // regardless of how ImageBox routes its image methods to a non-TileRect main sub-widget.
+        if (mRotating && texture != nullptr)
+        {
+            setRenderItemTexture(texture);
+            getSubWidgetMain()->_setUVSet(MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
+        }
 
         WidgetExtension::updateProperties();
 
