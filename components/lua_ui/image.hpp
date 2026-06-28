@@ -31,7 +31,15 @@ namespace LuaUi
         void initialize() override;
         void updateProperties() override;
         const std::vector<std::string_view>& allUsedProperties() const override;
-        LuaTileRect* mTileRect;
+
+        // Switches between the default tiling skin and the rotating skin, refreshing mTileRect
+        // (null while rotating). No-op if already in the requested mode.
+        void setRotating(bool rotating);
+        // Sets the rotation centre (widget midpoint) and angle on the RotatingSkin. No-op unless rotating.
+        void applyRotation(float angle);
+
+        LuaTileRect* mTileRect = nullptr;
+        bool mRotating = false;
     };
 }
 

@@ -2,6 +2,10 @@
 
 #include <MyGUI_ITexture.h>
 #include <MyGUI_RenderManager.h>
+#include <MyGUI_RotatingSkin.h>
+
+#include <cmath>
+#include <limits>
 
 #include "resources.hpp"
 
@@ -32,12 +36,40 @@ namespace LuaUi
     {
         changeWidgetSkin("LuaImage");
         mTileRect = dynamic_cast<LuaTileRect*>(getSubWidgetMain());
+        mRotating = false;
         WidgetExtension::initialize();
+    }
+
+    void LuaImage::setRotating(bool rotating)
+    {
+        if (rotating == mRotating)
+            return;
+        changeWidgetSkin(rotating ? "LuaImageRotating" : "LuaImage");
+        // LuaTileRect only exists on the default skin; null while rotating.
+        mTileRect = dynamic_cast<LuaTileRect*>(getSubWidgetMain());
+        mRotating = rotating;
+    }
+
+    void LuaImage::applyRotation(float angle)
+    {
+        if (!mRotating)
+            return;
+        auto* rot = getSubWidgetMain()->castType<MyGUI::RotatingSkin>(false);
+        if (rot == nullptr)
+            return;
+        const MyGUI::IntSize size = getSize();
+        rot->setCenter(MyGUI::IntPoint(size.width / 2, size.height / 2));
+        rot->setAngle(angle);
     }
 
     void LuaImage::updateProperties()
     {
-        // Dynamic texture path (e.g. character preview rendered to an OSG RTT texture).
+        // Decide rotation by PRESENCE of the property, not its value: a NaN sentinel means "absent".
+        // Deciding by presence avoids a skin flip when the angle happens to pass through 0.
+        const float rotation = propertyValue("rotation", std::numeric_limits<float>::quiet_NaN());
+        setRotating(!std::isnan(rotation));
+
+        // Dynamic texture path (e.g. character preview / map RTT texture).
         // Takes priority over the normal VFS-path resource.
         TextureResource* resource = propertyValue<TextureResource*>("resource", nullptr);
         if (resource && resource->mDynamicTexture)
@@ -46,7 +78,9 @@ namespace LuaUi
             getSubWidgetMain()->_setUVSet(resource->mFlipV
                     ? MyGUI::FloatRect(0.f, 1.f, 1.f, 0.f)
                     : MyGUI::FloatRect(0.f, 0.f, 1.f, 1.f));
+            setColour(propertyValue("color", MyGUI::Colour(1, 1, 1, 1)));
             WidgetExtension::updateProperties();
+            applyRotation(rotation);
             return;
         }
 
@@ -75,19 +109,24 @@ namespace LuaUi
         if (atlasCoord.height == 0)
             atlasCoord.height = textureSize.height;
 
-        mTileRect->updateSize(MyGUI::IntSize(tileH ? atlasCoord.width : 0, tileV ? atlasCoord.height : 0));
+        // Tiling is only available on the default skin (no LuaTileRect while rotating).
+        if (mTileRect != nullptr)
+            mTileRect->updateSize(MyGUI::IntSize(tileH ? atlasCoord.width : 0, tileV ? atlasCoord.height : 0));
         setImageTile(atlasCoord.size());
         setImageCoord(atlasCoord);
 
         setColour(propertyValue("color", MyGUI::Colour(1, 1, 1, 1)));
 
         WidgetExtension::updateProperties();
+
+        // After the base class has applied position/size, so the centre matches the final size.
+        applyRotation(rotation);
     }
 
     const std::vector<std::string_view>& LuaImage::allUsedProperties() const
     {
         static std::vector<std::string_view> usedProps = std::invoke([this] {
-            std::vector<std::string_view> props = { "resource", "tileH", "tileV", "color" };
+            std::vector<std::string_view> props = { "resource", "tileH", "tileV", "color", "rotation" };
             auto baseProps = WidgetExtension::allUsedProperties();
             props.insert(props.end(), baseProps.begin(), baseProps.end());
             return props;
