@@ -5,8 +5,6 @@
 #include <osg/BlendFunc>
 #include <osg/Camera>
 #include <osg/Fog>
-#include <osg/LightModel>
-#include <osg/LightSource>
 #include <osg/Material>
 #include <osg/PositionAttitudeTransform>
 #include <osg/Texture2D>
@@ -145,91 +143,8 @@ namespace MWRender
         }
     };
 
-    namespace
-    {
-        // Build the shared lighting/material/fog state used by both CharacterPreview and ObjectPreview.
-        // Reads the Inventory_Directional* Morrowind fallback entries so the look matches the vanilla
-        // inventory window.
-        void configurePreviewLighting(SceneUtil::LightManager& lightManager)
-        {
-            osg::ref_ptr<osg::StateSet> stateset = lightManager.getOrCreateStateSet();
-            stateset->setDefine("FORCE_OPAQUE", "1", osg::StateAttribute::ON);
-            stateset->setMode(GL_NORMALIZE, osg::StateAttribute::ON);
-            stateset->setMode(GL_CULL_FACE, osg::StateAttribute::ON);
-            osg::ref_ptr<osg::Material> defaultMat(new osg::Material);
-            defaultMat->setColorMode(osg::Material::OFF);
-            defaultMat->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
-            defaultMat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
-            defaultMat->setSpecular(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 0.f));
-            stateset->setAttribute(defaultMat);
-
-            SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
-
-            // assign large value to effectively turn off fog
-            // shaders don't respect glDisable(GL_FOG)
-            osg::ref_ptr<osg::Fog> fog(new osg::Fog);
-            fog->setStart(10000000);
-            fog->setEnd(10000000);
-            stateset->setAttributeAndModes(fog, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
-
-            // TODO: Clean up this mess of loose uniforms that shaders depend on.
-            // turn off sky blending
-            stateset->addUniform(new osg::Uniform("far", 10000000.0f));
-            stateset->addUniform(new osg::Uniform("skyBlendingStart", 8000000.0f));
-            stateset->addUniform(new osg::Uniform("screenRes", osg::Vec2f{ 1, 1 }));
-            stateset->addUniform(new osg::Uniform("emissiveMult", 1.f));
-
-            osg::ref_ptr<osg::Texture2D> dummyTexture = new osg::Texture2D();
-            dummyTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
-            dummyTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
-            dummyTexture->setInternalFormat(GL_DEPTH_COMPONENT);
-            dummyTexture->setTextureSize(1, 1);
-            // This might clash with a shadow map, so make sure it doesn't cast shadows
-            dummyTexture->setShadowComparison(true);
-            dummyTexture->setShadowCompareFunc(osg::Texture::ShadowCompareFunc::ALWAYS);
-            stateset->setTextureAttributeAndModes(7, dummyTexture, osg::StateAttribute::ON);
-
-            osg::ref_ptr<osg::LightModel> lightmodel = new osg::LightModel;
-            lightmodel->setAmbientIntensity(osg::Vec4(0.0, 0.0, 0.0, 1.0));
-            stateset->setAttributeAndModes(lightmodel, osg::StateAttribute::ON);
-
-            osg::ref_ptr<osg::Light> light = new osg::Light;
-            float diffuseR = Fallback::Map::getFloat("Inventory_DirectionalDiffuseR");
-            float diffuseG = Fallback::Map::getFloat("Inventory_DirectionalDiffuseG");
-            float diffuseB = Fallback::Map::getFloat("Inventory_DirectionalDiffuseB");
-            float ambientR = Fallback::Map::getFloat("Inventory_DirectionalAmbientR");
-            float ambientG = Fallback::Map::getFloat("Inventory_DirectionalAmbientG");
-            float ambientB = Fallback::Map::getFloat("Inventory_DirectionalAmbientB");
-            float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
-            float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
-            float positionX = -std::cos(azimuth) * std::sin(altitude);
-            float positionY = std::sin(azimuth) * std::sin(altitude);
-            float positionZ = std::cos(altitude);
-            light->setPosition(osg::Vec4(positionX, positionY, positionZ, 0.0));
-            light->setDiffuse(osg::Vec4(diffuseR, diffuseG, diffuseB, 1));
-            osg::Vec4 ambientRGBA = osg::Vec4(ambientR, ambientG, ambientB, 1);
-            lightmodel->setAmbientIntensity(ambientRGBA);
-            light->setAmbient(osg::Vec4(0, 0, 0, 1));
-            light->setSpecular(osg::Vec4(0, 0, 0, 0));
-            light->setLightNum(0);
-            light->setConstantAttenuation(1.f);
-            light->setLinearAttenuation(0.f);
-            light->setQuadraticAttenuation(0.f);
-            lightManager.setSunlight(light);
-
-            osg::ref_ptr<osg::LightSource> lightSource = new osg::LightSource;
-            lightSource->setLight(light);
-            lightSource->setStateSetModes(*stateset, osg::StateAttribute::ON);
-            lightManager.addChild(lightSource);
-        }
-    }
-
     class CharacterPreviewRTTNode : public SceneUtil::RTTNode
     {
-        static constexpr float fovYDegrees = 12.3f;
-        static constexpr float znear = 4.0f;
-        static constexpr float zfar = 10000.f;
-
     public:
         CharacterPreviewRTTNode(uint32_t sizeX, uint32_t sizeY)
             : RTTNode(sizeX, sizeY, Settings::video().mAntialiasing, false, 0,
@@ -286,7 +201,95 @@ namespace MWRender
         osg::Matrixf mViewMatrix;
         osg::ref_ptr<osg::StateSet> mCameraStateset;
         float mAspectRatio;
+
+        static constexpr float fovYDegrees = 12.3f;
+        static constexpr float znear = 4.0f;
+        static constexpr float zfar = 10000.f;
     };
+
+    namespace
+    {
+        // Build the shared LightManager with the lighting/material/fog state used by both
+        // CharacterPreview and ObjectPreview. Reads the Inventory_Directional* Morrowind fallback
+        // entries so the look matches the vanilla inventory window.
+        osg::ref_ptr<SceneUtil::LightManager> makePreviewLightManager(
+            Resource::ResourceSystem* resourceSystem, int sizeX, int sizeY)
+        {
+            osg::ref_ptr<SceneUtil::LightManager> lightManager = new SceneUtil::LightManager(
+                SceneUtil::LightSettings{
+                    .mClusteredLighting = Settings::shaders().mClusteredLighting,
+                    .mMaxLights = Settings::shaders().mMaxLights,
+                    .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
+                    .mLightFadeStart = Settings::shaders().mLightFadeStart,
+                    .mLightRadiusMultiplier = Settings::shaders().mLightRadiusMultiplier,
+                    .mClusteredGridSize = { 1, 1, 1 },
+                    .mClusteredWorkGroupSize = 1,
+                },
+                resourceSystem);
+            osg::ref_ptr<osg::StateSet> stateset = lightManager->getOrCreateStateSet();
+            stateset->setDefine("FORCE_OPAQUE", "1", osg::StateAttribute::ON);
+            stateset->setMode(GL_NORMALIZE, osg::StateAttribute::ON);
+            stateset->setMode(GL_CULL_FACE, osg::StateAttribute::ON);
+            osg::ref_ptr<osg::Material> defaultMat(new osg::Material);
+            defaultMat->setColorMode(osg::Material::OFF);
+            defaultMat->setAmbient(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
+            defaultMat->setDiffuse(osg::Material::FRONT_AND_BACK, osg::Vec4f(1, 1, 1, 1));
+            defaultMat->setSpecular(osg::Material::FRONT_AND_BACK, osg::Vec4f(0.f, 0.f, 0.f, 0.f));
+            stateset->setAttribute(defaultMat);
+
+            SceneUtil::ShadowManager::instance().disableShadowsForStateSet(*stateset);
+
+            // assign large value to effectively turn off fog
+            // shaders don't respect glDisable(GL_FOG)
+            osg::ref_ptr<osg::Fog> fog(new osg::Fog);
+            fog->setStart(10000000);
+            fog->setEnd(10000000);
+            stateset->setAttributeAndModes(fog, osg::StateAttribute::OFF | osg::StateAttribute::OVERRIDE);
+
+            // TODO: Clean up this mess of loose uniforms that shaders depend on.
+            // turn off sky blending
+            stateset->addUniform(new osg::Uniform("far", 10000000.0f));
+            stateset->addUniform(new osg::Uniform("near", CharacterPreviewRTTNode::znear));
+            stateset->addUniform(new osg::Uniform("skyBlendingStart", 8000000.0f));
+            stateset->addUniform(
+                new osg::Uniform("screenRes", osg::Vec2f{ static_cast<float>(sizeX), static_cast<float>(sizeY) }));
+
+            stateset->addUniform(new osg::Uniform("emissiveMult", 1.f));
+
+            osg::ref_ptr<osg::Texture2D> dummyTexture = new osg::Texture2D();
+            dummyTexture->setWrap(osg::Texture::WRAP_S, osg::Texture::CLAMP_TO_EDGE);
+            dummyTexture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+            dummyTexture->setInternalFormat(GL_DEPTH_COMPONENT);
+            dummyTexture->setTextureSize(1, 1);
+            // This might clash with a shadow map, so make sure it doesn't cast shadows
+            dummyTexture->setShadowComparison(true);
+            dummyTexture->setShadowCompareFunc(osg::Texture::ShadowCompareFunc::ALWAYS);
+            stateset->setTextureAttributeAndModes(7, dummyTexture, osg::StateAttribute::ON);
+
+            osg::ref_ptr<osg::Light> light = new osg::Light;
+            float diffuseR = Fallback::Map::getFloat("Inventory_DirectionalDiffuseR");
+            float diffuseG = Fallback::Map::getFloat("Inventory_DirectionalDiffuseG");
+            float diffuseB = Fallback::Map::getFloat("Inventory_DirectionalDiffuseB");
+            float ambientR = Fallback::Map::getFloat("Inventory_DirectionalAmbientR");
+            float ambientG = Fallback::Map::getFloat("Inventory_DirectionalAmbientG");
+            float ambientB = Fallback::Map::getFloat("Inventory_DirectionalAmbientB");
+            float azimuth = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationX"));
+            float altitude = osg::DegreesToRadians(Fallback::Map::getFloat("Inventory_DirectionalRotationY"));
+            float positionX = -std::cos(azimuth) * std::sin(altitude);
+            float positionY = std::sin(azimuth) * std::sin(altitude);
+            float positionZ = std::cos(altitude);
+            light->setPosition(osg::Vec4(positionX, positionY, positionZ, 0.0));
+            light->setDiffuse(osg::Vec4(diffuseR, diffuseG, diffuseB, 1));
+            light->setAmbient(osg::Vec4(ambientR, ambientG, ambientB, 1));
+            light->setSpecular(osg::Vec4(0, 0, 0, 0));
+            light->setConstantAttenuation(1.f);
+            light->setLinearAttenuation(0.f);
+            light->setQuadraticAttenuation(0.f);
+            lightManager->setSunlight(light);
+
+            return lightManager;
+        }
+    }
 
     CharacterPreview::CharacterPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
         const MWWorld::Ptr& character, int sizeX, int sizeY, const osg::Vec3f& position, const osg::Vec3f& lookAt)
@@ -305,15 +308,7 @@ namespace MWRender
         mRTTNode = new CharacterPreviewRTTNode(sizeX, sizeY);
         mRTTNode->setNodeMask(Mask_RenderToTexture);
 
-        osg::ref_ptr<SceneUtil::LightManager> lightManager = new SceneUtil::LightManager(SceneUtil::LightSettings{
-            .mLightingMethod = mResourceSystem->getSceneManager()->getLightingMethod(),
-            .mMaxLights = Settings::shaders().mMaxLights,
-            .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
-            .mLightFadeStart = Settings::shaders().mLightFadeStart,
-            .mLightBoundsMultiplier = Settings::shaders().mLightBoundsMultiplier,
-        });
-        lightManager->setStartLight(1);
-        configurePreviewLighting(*lightManager);
+        osg::ref_ptr<SceneUtil::LightManager> lightManager = makePreviewLightManager(resourceSystem, sizeX, sizeY);
 
         mRTTNode->addChild(lightManager);
 
@@ -555,15 +550,7 @@ namespace MWRender
         mRTTNode = new CharacterPreviewRTTNode(sizeX, sizeY);
         mRTTNode->setNodeMask(Mask_RenderToTexture);
 
-        osg::ref_ptr<SceneUtil::LightManager> lightManager = new SceneUtil::LightManager(SceneUtil::LightSettings{
-            .mLightingMethod = mResourceSystem->getSceneManager()->getLightingMethod(),
-            .mMaxLights = Settings::shaders().mMaxLights,
-            .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
-            .mLightFadeStart = Settings::shaders().mLightFadeStart,
-            .mLightBoundsMultiplier = Settings::shaders().mLightBoundsMultiplier,
-        });
-        lightManager->setStartLight(1);
-        configurePreviewLighting(*lightManager);
+        osg::ref_ptr<SceneUtil::LightManager> lightManager = makePreviewLightManager(resourceSystem, sizeX, sizeY);
 
         mRTTNode->addChild(lightManager);
 

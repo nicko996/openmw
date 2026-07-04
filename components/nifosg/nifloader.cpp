@@ -58,6 +58,7 @@
 #include <components/sceneutil/skeleton.hpp>
 #include <components/sceneutil/texturetype.hpp>
 
+#include "autotransform.hpp"
 #include "fog.hpp"
 #include "matrixtransform.hpp"
 #include "particle.hpp"
@@ -143,44 +144,6 @@ namespace
             }
         }
     }
-
-    // NodeCallback used to have a node always oriented towards the camera. The node can have translation and scale
-    // set just like a regular MatrixTransform, but the rotation set will be overridden in order to face the camera.
-    class BillboardCallback : public SceneUtil::NodeCallback<BillboardCallback, osg::Node*, osgUtil::CullVisitor*>
-    {
-    public:
-        BillboardCallback() {}
-        BillboardCallback(const BillboardCallback& copy, const osg::CopyOp& copyop)
-            : SceneUtil::NodeCallback<BillboardCallback, osg::Node*, osgUtil::CullVisitor*>(copy, copyop)
-        {
-        }
-
-        META_Object(NifOsg, BillboardCallback)
-
-        void operator()(osg::Node* node, osgUtil::CullVisitor* cv)
-        {
-            osg::Matrix modelView = *cv->getModelViewMatrix();
-
-            // attempt to preserve scale
-            double mag[3];
-            for (int i = 0; i < 3; ++i)
-            {
-                mag[i] = std::sqrt(modelView(0, i) * modelView(0, i) + modelView(1, i) * modelView(1, i)
-                    + modelView(2, i) * modelView(2, i));
-            }
-
-            modelView.setRotate(osg::Quat());
-            modelView(0, 0) = mag[0];
-            modelView(1, 1) = mag[1];
-            modelView(2, 2) = mag[2];
-
-            cv->pushModelViewMatrix(new osg::RefMatrix(modelView), osg::Transform::RELATIVE_RF);
-
-            traverse(node, cv);
-
-            cv->popModelViewMatrix();
-        }
-    };
 
     void extractTextKeys(const Nif::NiTextKeyExtraData* tk, SceneUtil::TextKeyMap& textkeys)
     {
@@ -393,6 +356,7 @@ namespace NifOsg
             bool mHasMarkers = false;
             bool mHasAnimatedParents = false;
             osg::Node* mRootNode = nullptr;
+            const Nif::NiNode* mCollisionNode = nullptr;
         };
 
         osg::ref_ptr<osg::Node> load(Nif::FileView nif)
@@ -627,27 +591,39 @@ namespace NifOsg
         static osg::ref_ptr<osg::Group> createNode(const Nif::NiAVObject* nifNode)
         {
             osg::ref_ptr<osg::Group> node;
-            osg::Object::DataVariance dataVariance = osg::Object::UNSPECIFIED;
 
-            switch (nifNode->mRecordType)
+            osg::Object::DataVariance dataVariance = nifNode->mIsBone ? osg::Object::DYNAMIC : osg::Object::STATIC;
+
+            if (nifNode->mRecordType == Nif::RC_NiBillboardNode)
             {
-                case Nif::RC_NiBillboardNode:
-                    dataVariance = osg::Object::DYNAMIC;
-                    break;
-                default:
-                    // The Root node can be created as a Group if no transformation is required.
-                    // This takes advantage of the fact root nodes can't have additional controllers
-                    // loaded from an external .kf file (original engine just throws "can't find node" errors if you
-                    // try).
-                    if (nifNode->mParents.empty() && nifNode->mController.empty() && nifNode->mTransform.isIdentity())
-                        node = new osg::Group;
+                auto billboard = static_cast<const Nif::NiBillboardNode*>(nifNode);
+                using Mode = Nif::NiBillboardNode::BillboardMode;
 
-                    dataVariance = nifNode->mIsBone ? osg::Object::DYNAMIC : osg::Object::STATIC;
+                if (billboard->mMode == Mode::AlwaysFaceCamera)
+                    node = new NifOsg::AutoTransform(billboard->mTransform, AutoTransform::Mode::AlwaysFaceCamera);
+                else if (billboard->mMode == Mode::RotateAboutUp || billboard->mMode == Mode::BSRotateAboutUp)
+                    node = new NifOsg::AutoTransform(billboard->mTransform, AutoTransform::Mode::RotateAboutUp);
+                else if (billboard->mMode == Mode::RigidFaceCamera)
+                    node = new NifOsg::AutoTransform(billboard->mTransform, AutoTransform::Mode::RigidFaceCamera);
+                else
+                {
+                    Log(Debug::Warning) << "Unhandled billboard mode " << static_cast<int>(billboard->mMode)
+                                        << " in record " << nifNode->mRecordIndex;
+                    node = new NifOsg::AutoTransform(billboard->mTransform);
+                }
 
-                    break;
+                dataVariance = osg::Object::DYNAMIC;
             }
-            if (!node)
-                node = new NifOsg::MatrixTransform(nifNode->mTransform);
+            else
+            {
+                // The Root node can be created as a Group if no transformation is required.
+                // This takes advantage of the fact root nodes can't have additional controllers
+                // loaded from an external .kf file (original engine just throws "can't find node" errors if you try).
+                if (nifNode->mParents.empty() && nifNode->mController.empty() && nifNode->mTransform.isIdentity())
+                    node = new osg::Group;
+                else
+                    node = new NifOsg::MatrixTransform(nifNode->mTransform);
+            }
 
             node->setDataVariance(dataVariance);
 
@@ -661,11 +637,6 @@ namespace NifOsg
                 return nullptr;
 
             osg::ref_ptr<osg::Group> node = createNode(nifNode);
-
-            if (nifNode->mRecordType == Nif::RC_NiBillboardNode)
-            {
-                node->addCullCallback(new BillboardCallback);
-            }
 
             node->setName(nifNode->mName);
 
@@ -682,6 +653,7 @@ namespace NifOsg
             node->setUserValue("recordIndex", nifNode->mRecordIndex);
 
             std::string extraData;
+            bool recursiveCollision = false;
 
             for (const auto& e : nifNode->getExtraList())
             {
@@ -711,6 +683,11 @@ namespace NifOsg
                     {
                         node->getOrCreateUserDataContainer()->addDescription("CustomBone");
                     }
+                    else if (sd->mData == "RCN")
+                    {
+                        if (args.mRootNode == node)
+                            recursiveCollision = true;
+                    }
                     else if (sd->mData.rfind(extraDataIdentifer, 0) == 0)
                     {
                         extraData = sd->mData.substr(extraDataIdentifer.length());
@@ -727,6 +704,10 @@ namespace NifOsg
                         args.mHasMarkers = true;
                 }
             }
+
+            const Nif::NiNode* ninode = dynamic_cast<const Nif::NiNode*>(nifNode);
+            if (ninode && args.mRootNode == node)
+                args.mCollisionNode = ninode->findRootCollisionNode(recursiveCollision);
 
             if (nifNode->mRecordType == Nif::RC_NiBSAnimationNode || nifNode->mRecordType == Nif::RC_NiBSParticleNode)
                 args.mAnimFlags = nifNode->mFlags;
@@ -751,7 +732,7 @@ namespace NifOsg
 
             // Hide collision shapes, but don't skip the subgraph
             // We still need to animate the hidden bones so the physics system can access them
-            if (nifNode->mRecordType == Nif::RC_RootCollisionNode)
+            if (nifNode == args.mCollisionNode)
             {
                 args.mSkipMeshes = true;
                 node->setNodeMask(Loader::getHiddenNodeMask());
@@ -875,7 +856,6 @@ namespace NifOsg
                 currentNode = sequenceNode;
             }
 
-            const Nif::NiNode* ninode = dynamic_cast<const Nif::NiNode*>(nifNode);
             if (ninode)
             {
                 const Nif::NiAVObjectList& children = ninode->mChildren;

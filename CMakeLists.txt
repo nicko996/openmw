@@ -82,7 +82,7 @@ message(STATUS "Configuring OpenMW...")
 set(OPENMW_VERSION_MAJOR 0)
 set(OPENMW_VERSION_MINOR 52)
 set(OPENMW_VERSION_RELEASE 0)
-set(OPENMW_LUA_API_REVISION 131)
+set(OPENMW_LUA_API_REVISION 135)
 set(OPENMW_POSTPROCESSING_API_REVISION 5)
 
 set(OPENMW_VERSION_COMMITHASH "")
@@ -166,9 +166,6 @@ option(OPENMW_USE_SYSTEM_GOOGLETEST "Use system Google Test library." OFF)
 
 option(OPENMW_UNITY_BUILD "Use fewer compilation units to speed up compile time" FALSE)
 option(OPENMW_LTO_BUILD "Build OpenMW with Link-Time Optimization (Needs ~2GB of RAM)" OFF)
-
-# OS X deployment
-option(OPENMW_OSX_DEPLOYMENT OFF)
 
 if (CMAKE_GENERATOR MATCHES "Visual Studio")
     if (OPENMW_MSBUILD_COMPILER_OVERRIDE)
@@ -305,16 +302,6 @@ set(USED_OSG_PLUGINS
     osgdb_serializers_osg
     osgdb_tga)
 
-if(NOT COLLADA_DOM_VERSION_MAJOR)
-    set(COLLADA_DOM_VERSION_MAJOR 2)
-endif()
-
-if(NOT COLLADA_DOM_VERSION_MINOR)
-    set(COLLADA_DOM_VERSION_MINOR 5)
-endif()
-
-find_package(collada_dom 2.5)
-
 option(OPENMW_USE_SYSTEM_ICU "Use system ICU library instead of internal. If disabled, requires autotools" ON)
 if(OPENMW_USE_SYSTEM_ICU)
     find_package(ICU REQUIRED COMPONENTS uc i18n data)
@@ -348,31 +335,28 @@ find_package(FFmpeg REQUIRED COMPONENTS AVCODEC AVFORMAT AVUTIL SWSCALE SWRESAMP
 if(FFmpeg_FOUND)
     SET(FFVER_OK TRUE)
 
-    # Can not detect FFmpeg version on Windows or Android for now
-    if (NOT WIN32 AND NOT ANDROID)
-        if(FFmpeg_AVFORMAT_VERSION VERSION_LESS "57.56.100")
-            message(STATUS "libavformat is too old! (${FFmpeg_AVFORMAT_VERSION}, wanted 57.56.100)")
-            set(FFVER_OK FALSE)
-        endif()
-        if(FFmpeg_AVCODEC_VERSION VERSION_LESS "57.64.100")
-            message(STATUS "libavcodec is too old! (${FFmpeg_AVCODEC_VERSION}, wanted 57.64.100)")
-            set(FFVER_OK FALSE)
-        endif()
-        if(FFmpeg_AVUTIL_VERSION VERSION_LESS "55.34.100")
-            message(STATUS "libavutil is too old! (${FFmpeg_AVUTIL_VERSION}, wanted 55.34.100)")
-            set(FFVER_OK FALSE)
-        endif()
-        if(FFmpeg_SWSCALE_VERSION VERSION_LESS "4.2.100")
-            message(STATUS "libswscale is too old! (${FFmpeg_SWSCALE_VERSION}, wanted 4.2.100)")
-            set(FFVER_OK FALSE)
-        endif()
-        if(FFmpeg_SWRESAMPLE_VERSION VERSION_LESS "2.3.100")
-            message(STATUS "libswresample is too old! (${FFmpeg_SWRESAMPLE_VERSION}, wanted 2.3.100)")
-            set(FFVER_OK FALSE)
-        endif()
+    if(FFmpeg_AVFORMAT_VERSION VERSION_LESS "57.56.100")
+        message(STATUS "libavformat is too old! (${FFmpeg_AVFORMAT_VERSION}, wanted 57.56.100)")
+        set(FFVER_OK FALSE)
+    endif()
+    if(FFmpeg_AVCODEC_VERSION VERSION_LESS "57.64.100")
+        message(STATUS "libavcodec is too old! (${FFmpeg_AVCODEC_VERSION}, wanted 57.64.100)")
+        set(FFVER_OK FALSE)
+    endif()
+    if(FFmpeg_AVUTIL_VERSION VERSION_LESS "55.34.100")
+        message(STATUS "libavutil is too old! (${FFmpeg_AVUTIL_VERSION}, wanted 55.34.100)")
+        set(FFVER_OK FALSE)
+    endif()
+    if(FFmpeg_SWSCALE_VERSION VERSION_LESS "4.2.100")
+        message(STATUS "libswscale is too old! (${FFmpeg_SWSCALE_VERSION}, wanted 4.2.100)")
+        set(FFVER_OK FALSE)
+    endif()
+    if(FFmpeg_SWRESAMPLE_VERSION VERSION_LESS "2.3.100")
+        message(STATUS "libswresample is too old! (${FFmpeg_SWRESAMPLE_VERSION}, wanted 2.3.100)")
+        set(FFVER_OK FALSE)
     endif()
 
-    if(NOT FFVER_OK AND NOT APPLE)  # unable to detect on version on MacOS < 11.0
+    if(NOT FFVER_OK)
         message(FATAL_ERROR "FFmpeg version is too old, 3.2 is required" )
     endif()
 endif()
@@ -475,6 +459,18 @@ endif()
 include_directories(BEFORE SYSTEM ${OPENSCENEGRAPH_INCLUDE_DIRS})
 
 if(OSG_STATIC)
+    if(NOT COLLADA_DOM_VERSION_MAJOR)
+        set(COLLADA_DOM_VERSION_MAJOR 2)
+    endif()
+
+    if(NOT COLLADA_DOM_VERSION_MINOR)
+        set(COLLADA_DOM_VERSION_MINOR 5)
+    endif()
+
+    find_package(collada_dom 2.5)
+
+    link_directories(${COLLADA_DOM_LIBRARY_DIRS})
+
     add_compile_definitions(OSG_LIBRARY_STATIC)
 endif()
 
@@ -524,8 +520,6 @@ include_directories(
 )
 include_directories(".")
 
-link_directories(${COLLADA_DOM_LIBRARY_DIRS})
-
 if(MYGUI_STATIC)
     add_compile_definitions(MYGUI_STATIC)
 endif (MYGUI_STATIC)
@@ -550,9 +544,7 @@ if (APPLE)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${APP_BUNDLE_DIR}/Contents/MacOS")
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${APP_BUNDLE_DIR}/Contents/MacOS")
 
-    if (OPENMW_OSX_DEPLOYMENT)
-        SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-    endif()
+    SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 else (APPLE)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${OpenMW_BINARY_DIR}")
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${OpenMW_BINARY_DIR}")
@@ -803,7 +795,7 @@ endif()
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CUSTOM_CPACK_OS_NAME}-${CUSTOM_CPACK_ARCHITECTURE}")
 
 # Apple bundling
-if (OPENMW_OSX_DEPLOYMENT AND APPLE)
+if (APPLE)
     if(CMAKE_VERSION VERSION_LESS 3.19)
         message(FATAL_ERROR "macOS packaging requires CMake 3.19 or higher to sign macOS app bundles.")
     endif()
@@ -1091,7 +1083,7 @@ elseif(NOT APPLE)
         # Install resources
         INSTALL(DIRECTORY "${INSTALL_SOURCE}/resources" DESTINATION "${DATADIR}" COMPONENT "Resources")
     endif(WIN32)
-endif(OPENMW_OSX_DEPLOYMENT AND APPLE)
+endif(APPLE)
 
 # what is necessary to build documentation
 if ( BUILD_DOCS )
@@ -1128,20 +1120,41 @@ if (USE_QT)
     file(GLOB COMPONENTS_TS_FILES ${CMAKE_SOURCE_DIR}/files/lang/components_*.ts)
     get_target_property(QT_LUPDATE_EXECUTABLE Qt::lupdate IMPORTED_LOCATION)
     add_custom_target(translations
-    COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none ${CMAKE_SOURCE_DIR}/components/contentselector ${CMAKE_SOURCE_DIR}/components/process -ts ${COMPONENTS_TS_FILES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/components
-    VERBATIM
-    COMMAND_EXPAND_LISTS
+        COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none ${CMAKE_SOURCE_DIR}/components/contentselector ${CMAKE_SOURCE_DIR}/components/process -ts ${COMPONENTS_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/components
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+        BYPRODUCTS ${COMPONENTS_TS_FILES}
 
-    COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none ${CMAKE_SOURCE_DIR}/apps/wizard -ts ${WIZARD_TS_FILES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/apps/wizard
-    VERBATIM
-    COMMAND_EXPAND_LISTS
+        COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none ${CMAKE_SOURCE_DIR}/apps/wizard -ts ${WIZARD_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/apps/wizard
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+        BYPRODUCTS ${WIZARD_TS_FILES}
 
-    COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none ${CMAKE_SOURCE_DIR}/apps/launcher -ts ${LAUNCHER_TS_FILES}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/apps/launcher
-    VERBATIM
-    COMMAND_EXPAND_LISTS)
+        COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none ${CMAKE_SOURCE_DIR}/apps/launcher -ts ${LAUNCHER_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/apps/launcher
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+        BYPRODUCTS ${LAUNCHER_TS_FILES}
+    )
+
+    add_custom_target(purge-obsolete-translations
+        COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none -no-obsolete ${CMAKE_SOURCE_DIR}/components/contentselector ${CMAKE_SOURCE_DIR}/components/process -ts ${COMPONENTS_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/components
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+
+        COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none -no-obsolete ${CMAKE_SOURCE_DIR}/apps/wizard -ts ${WIZARD_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/apps/wizard
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+
+        COMMAND ${QT_LUPDATE_EXECUTABLE} -locations none -no-obsolete ${CMAKE_SOURCE_DIR}/apps/launcher -ts ${LAUNCHER_TS_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/apps/launcher
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+    )
 
     if (BUILD_LAUNCHER OR BUILD_WIZARD)
         if (APPLE)

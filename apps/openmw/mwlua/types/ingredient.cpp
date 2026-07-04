@@ -203,7 +203,7 @@ namespace MWLua
             ingred.mScript = ESM::RefId::deserializeText(scriptId);
         }
         if (rec["icon"] != sol::nil)
-            ingred.mIcon = rec["icon"];
+            ingred.mIcon = rec["icon"].get<std::string_view>();
         if (rec["weight"] != sol::nil)
             ingred.mData.mWeight = rec["weight"].get<Misc::FiniteFloat>();
         if (rec["value"] != sol::nil)
@@ -231,6 +231,7 @@ namespace MWLua
     void addIngredientBindings(sol::table ingredient, const Context& context)
     {
         addRecordFunctionBinding<ESM::Ingredient>(ingredient, context);
+        ingredient["createRecordDraft"] = tableToIngredient;
         sol::state_view lua = context.sol();
         addUserType<ESM::Ingredient>(lua, "ESM3_Ingredient");
     }

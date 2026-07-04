@@ -659,6 +659,8 @@ namespace MWGui
         else
             setCursorVisible(!gameMode);
 
+        updateMouseEmulationCursor();
+
         if (gameMode)
             setKeyFocusWidget(nullptr);
 
@@ -1061,6 +1063,8 @@ namespace MWGui
         if (mInventoryTabsOverlay && mInventoryTabsOverlay->isVisible())
             mInventoryTabsOverlay->onFrame(frameDuration);
 
+        updateMouseEmulationCursor();
+
         if (!gameRunning)
             return;
 
@@ -1373,6 +1377,8 @@ namespace MWGui
 
         // Re-apply any controller-specific window changes.
         reapplyActiveControllerWindow();
+
+        MWBase::Environment::get().getLuaManager()->viewportResized(x, y);
 
         // TODO: check if any windows are now off-screen and move them back if so
     }
@@ -1938,6 +1944,24 @@ namespace MWGui
         return mCursorVisible && mCursorActive;
     }
 
+    void WindowManager::updateMouseEmulationCursor()
+    {
+        if (!mHud)
+            return;
+
+        bool mouseEmulation = MWBase::Environment::get().getInputManager()->joystickLastUsed()
+            && MWBase::Environment::get().getInputManager()->isGamepadGuiCursorEnabled();
+
+        bool showCursor = mouseEmulation && Settings::hud().mMouseEmulationCursor && getCursorVisible();
+        mHud->setMouseEmulationCursorVisible(showCursor);
+
+        if (showCursor)
+        {
+            MyGUI::IntPoint pos = MyGUI::InputManager::getInstance().getMousePosition();
+            mHud->setMouseEmulationCursorPosition(pos.left, pos.top);
+        }
+    }
+
     void WindowManager::trackWindow(Layout* layout, const WindowSettingValues& settings)
     {
         MyGUI::IntSize viewSize = MyGUI::RenderManager::getInstance().getViewSize();
@@ -2109,6 +2133,9 @@ namespace MWGui
         setKeyFocusWidget(mVideoWidget);
 
         mVideoBackground->setVisible(true);
+
+        if (mInputBlocker)
+            mInputBlocker->setVisible(false);
 
         bool cursorWasVisible = mCursorVisible;
         setCursorVisible(false);

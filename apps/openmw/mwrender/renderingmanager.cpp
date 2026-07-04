@@ -1,7 +1,6 @@
 #include "renderingmanager.hpp"
 
 #include <cstdlib>
-#include <limits>
 
 #include <osg/ClipControl>
 #include <osg/ComputeBoundsVisitor>
@@ -35,6 +34,7 @@
 #include <components/sceneutil/depth.hpp>
 #include <components/sceneutil/lightmanager.hpp>
 #include <components/sceneutil/positionattitudetransform.hpp>
+#include <components/sceneutil/rtt.hpp>
 #include <components/sceneutil/shadow.hpp>
 #include <components/sceneutil/stateupdater.hpp>
 #include <components/sceneutil/visitor.hpp>
@@ -83,6 +83,55 @@
 #include "util.hpp"
 #include "vismask.hpp"
 #include "water.hpp"
+
+namespace
+{
+    class LightManagerUpdateVisitor : public osg::NodeVisitor
+    {
+    public:
+        LightManagerUpdateVisitor()
+            : osg::NodeVisitor(TRAVERSE_ALL_CHILDREN)
+        {
+            setNodeMaskOverride(~0u);
+        }
+
+        void apply(osg::Node& node) override
+        {
+            if (auto* rtt = dynamic_cast<SceneUtil::RTTNode*>(&node))
+            {
+                for (const auto& [_, vdd] : rtt->getViewDependentDataMap())
+                {
+                    traverse(*vdd->mCamera.get());
+                }
+            }
+
+            traverse(node);
+        }
+
+        void apply(osg::Group& node) override
+        {
+            if (auto* lm = dynamic_cast<SceneUtil::LightManager*>(&node))
+            {
+                if (mDoThreadUnsafeOps)
+                {
+                    lm->updateMaxLights(Settings::shaders().mMaxLights);
+                    lm->enableClustered(Settings::shaders().mClusteredLighting);
+                }
+
+                lm->processChangedSettings(Settings::shaders().mLightRadiusMultiplier,
+                    Settings::shaders().mMaximumLightDistance, Settings::shaders().mLightFadeStart);
+
+                return;
+            }
+            traverse(node);
+        }
+
+        void setDoThreadUnsafeOps(bool doThreadUnsafeOps) { mDoThreadUnsafeOps = doThreadUnsafeOps; }
+
+    private:
+        bool mDoThreadUnsafeOps = false;
+    };
+}
 
 namespace MWRender
 {
@@ -154,19 +203,23 @@ namespace MWRender
 
         // Let LightManager choose which backend to use based on our hint.
         // Ultimately dependent on support for various OpenGL extensions.
-        osg::ref_ptr<SceneUtil::LightManager> sceneRoot = new SceneUtil::LightManager(SceneUtil::LightSettings{
-            .mLightingMethod = Settings::shaders().mLightingMethod,
-            .mMaxLights = Settings::shaders().mMaxLights,
-            .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
-            .mLightFadeStart = Settings::shaders().mLightFadeStart,
-            .mLightBoundsMultiplier = Settings::shaders().mLightBoundsMultiplier,
-        });
-        resourceSystem->getSceneManager()->setLightingMethod(sceneRoot->getLightingMethod());
-        resourceSystem->getSceneManager()->setSupportedLightingMethods(sceneRoot->getSupportedLightingMethods());
+        osg::ref_ptr<SceneUtil::LightManager> sceneRoot = new SceneUtil::LightManager(
+            SceneUtil::LightSettings{
+                .mClusteredLighting = Settings::shaders().mClusteredLighting,
+                .mMaxLights = Settings::shaders().mMaxLights,
+                .mMaximumLightDistance = Settings::shaders().mMaximumLightDistance,
+                .mLightFadeStart = Settings::shaders().mLightFadeStart,
+                .mLightRadiusMultiplier = Settings::shaders().mLightRadiusMultiplier,
+            },
+            resourceSystem);
+
+        resourceSystem->getSceneManager()->setSupportsClusteredLighting(sceneRoot->isClusteredSupported());
+
+        // Sync clustered lighting setting so it's more intuitive when viewed in the in-game setting panel
+        Settings::shaders().mClusteredLighting.set(sceneRoot->getClusteredLighting());
 
         sceneRoot->setLightingMask(Mask_Lighting);
         mSceneRoot = sceneRoot;
-        sceneRoot->setStartLight(1);
         sceneRoot->setNodeMask(Mask_Scene);
         sceneRoot->setName("Scene Root");
 
@@ -201,6 +254,7 @@ namespace MWRender
         globalDefines["radialFog"] = (exponentialFog || Settings::fog().mRadialFog) ? "1" : "0";
         globalDefines["exponentialFog"] = exponentialFog ? "1" : "0";
         globalDefines["skyBlending"] = mSkyBlending ? "1" : "0";
+        globalDefines["particlePointLighting"] = Settings::shaders().mParticlePointLighting ? "1" : "0";
 
         for (auto itr = lightDefines.begin(); itr != lightDefines.end(); itr++)
             globalDefines[itr->first] = itr->second;
@@ -316,8 +370,6 @@ namespace MWRender
                 Shader::ShaderManager::Slot::SkyTexture);
             mPerViewUniformStateUpdater->enableSkyRTT(skyTextureUnit, mSky->getSkyRTT());
         }
-
-        source->setStateSetModes(*mRootNode->getOrCreateStateSet(), osg::StateAttribute::ON);
 
         osg::Camera::CullingMode cullingMode = osg::Camera::DEFAULT_CULLING | osg::Camera::FAR_PLANE_CULLING;
 
@@ -467,7 +519,7 @@ namespace MWRender
     {
         bool isInterior = !cell.isExterior() && !cell.isQuasiExterior();
         bool needsAdjusting = false;
-        needsAdjusting = isInterior && !Settings::shaders().mClassicFalloff;
+        needsAdjusting = isInterior && (!Settings::shaders().mClassicFalloff || Settings::shaders().mClusteredLighting);
 
         osg::Vec4f ambient = SceneUtil::colourFromRGB(cell.getMood().mAmbiantColor);
 
@@ -937,7 +989,7 @@ namespace MWRender
     };
 
     osg::ref_ptr<osgUtil::IntersectionVisitor> RenderingManager::getIntersectionVisitor(
-        osgUtil::Intersector* intersector, bool ignorePlayer, bool ignoreActors,
+        osgUtil::Intersector* intersector, bool ignorePlayer, bool ignoreActors, bool ignoreTerrain,
         std::span<const MWWorld::Ptr> ignoreList)
     {
         if (!mIntersectionVisitor)
@@ -968,25 +1020,27 @@ namespace MWRender
             mask &= ~(Mask_Player);
         if (ignoreActors)
             mask &= ~(Mask_Actor | Mask_Player);
+        if (ignoreTerrain)
+            mask &= ~(Mask_Terrain);
 
         mIntersectionVisitor->setTraversalMask(mask);
         return mIntersectionVisitor;
     }
 
     RenderingManager::RayResult RenderingManager::castRay(const osg::Vec3f& origin, const osg::Vec3f& dest,
-        bool ignorePlayer, bool ignoreActors, std::span<const MWWorld::Ptr> ignoreList)
+        bool ignorePlayer, bool ignoreActors, bool ignoreTerrain, std::span<const MWWorld::Ptr> ignoreList)
     {
         osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector(
             new osgUtil::LineSegmentIntersector(osgUtil::LineSegmentIntersector::MODEL, origin, dest));
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        mRootNode->accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreList));
+        mRootNode->accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain, ignoreList));
 
         return getIntersectionResult(intersector, mIntersectionVisitor, ignoreList);
     }
 
     RenderingManager::RayResult RenderingManager::castCameraToViewportRay(
-        const float nX, const float nY, float maxDistance, bool ignorePlayer, bool ignoreActors)
+        const float nX, const float nY, float maxDistance, bool ignorePlayer, bool ignoreActors, bool ignoreTerrain)
     {
         osg::ref_ptr<osgUtil::LineSegmentIntersector> intersector(new osgUtil::LineSegmentIntersector(
             osgUtil::LineSegmentIntersector::PROJECTION, nX * 2.f - 1.f, nY * (-2.f) + 1.f));
@@ -1000,7 +1054,7 @@ namespace MWRender
         intersector->setEnd(end);
         intersector->setIntersectionLimit(osgUtil::LineSegmentIntersector::LIMIT_NEAREST);
 
-        mViewer->getCamera()->accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors));
+        mViewer->getCamera()->accept(*getIntersectionVisitor(intersector, ignorePlayer, ignoreActors, ignoreTerrain));
 
         return getIntersectionResult(intersector, mIntersectionVisitor);
     }
@@ -1207,6 +1261,8 @@ namespace MWRender
         if (mNightEyeFactor > 0.f)
             color += osg::Vec4f(0.7f, 0.7f, 0.7f, 0.0f) * mNightEyeFactor;
 
+        mSunLight->setAmbient(color);
+
         mPostProcessor->getStateUpdater()->setAmbientColor(color);
         mStateUpdater->setAmbientColor(color);
     }
@@ -1333,29 +1389,38 @@ namespace MWRender
                 mViewer->startThreading();
             }
             else if (it->first == "Shaders"
-                && (it->second == "light bounds multiplier" || it->second == "maximum light distance"
-                    || it->second == "light fade start" || it->second == "max lights"))
+                && (it->second == "light radius multiplier" || it->second == "maximum light distance"
+                    || it->second == "light fade start" || it->second == "max lights"
+                    || it->second == "clustered lighting" || it->second == "particle point lighting"))
             {
-                auto* lightManager = getLightRoot();
+                if (MWMechanics::getPlayer().isInCell())
+                    configureAmbient(*MWMechanics::getPlayer().getCell()->getCell());
 
-                lightManager->processChangedSettings(Settings::shaders().mLightBoundsMultiplier,
-                    Settings::shaders().mMaximumLightDistance, Settings::shaders().mLightFadeStart);
+                LightManagerUpdateVisitor visitor;
+                bool lightManagersUpdated = false;
 
-                if (it->second == "max lights")
+                if (it->second == "max lights" || it->second == "clustered lighting"
+                    || it->second == "particle point lighting")
                 {
                     mViewer->stopThreading();
 
-                    lightManager->updateMaxLights(Settings::shaders().mMaxLights);
+                    visitor.setDoThreadUnsafeOps(true);
+                    mViewer->getSceneData()->accept(visitor);
+                    lightManagersUpdated = true;
 
                     auto defines = mResourceSystem->getSceneManager()->getShaderManager().getGlobalDefines();
-                    for (const auto& [name, key] : lightManager->getLightDefines())
+                    for (const auto& [name, key] : getLightRoot()->getLightDefines())
                         defines[name] = key;
+                    defines["particlePointLighting"] = Settings::shaders().mParticlePointLighting ? "1" : "0";
                     mResourceSystem->getSceneManager()->getShaderManager().setGlobalDefines(defines);
 
                     mStateUpdater->reset();
 
                     mViewer->startThreading();
                 }
+
+                if (!lightManagersUpdated)
+                    mViewer->getSceneData()->accept(visitor);
             }
             else if (it->first == "Post Processing" && it->second == "enabled")
             {

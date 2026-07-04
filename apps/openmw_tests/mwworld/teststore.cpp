@@ -5,6 +5,7 @@
 #include <array>
 #include <fstream>
 #include <span>
+#include <type_traits>
 
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
@@ -415,7 +416,10 @@ TYPED_TEST_P(StoreTest, overwrite_test)
 
         ASSERT_NE(overwrittenRec, nullptr);
 
-        EXPECT_EQ(overwrittenRec->mModel, "the_new_model");
+        if constexpr (std::is_same_v<decltype(overwrittenRec->mModel), ESM::Path>)
+            EXPECT_EQ(overwrittenRec->mModel.getOriginal(), "the_new_model");
+        else
+            EXPECT_EQ(overwrittenRec->mModel, "the_new_model");
     }
 }
 
@@ -489,7 +493,7 @@ namespace
             const RecordType* result = nullptr;
             if constexpr (std::is_same_v<RecordType, ESM::LandTexture>)
             {
-                const std::string* texture = esmStore.get<RecordType>().search(index, 0);
+                const ESM::Path* const texture = esmStore.get<RecordType>().search(index, 0);
                 ASSERT_NE(texture, nullptr);
                 return;
             }

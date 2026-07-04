@@ -50,6 +50,7 @@
 #include "aiwander.hpp"
 #include "attacktype.hpp"
 #include "character.hpp"
+#include "combat.hpp"
 #include "creaturestats.hpp"
 #include "greetingstate.hpp"
 #include "movement.hpp"
@@ -218,7 +219,7 @@ namespace
                 const ESM::Static* const fx
                     = world->getStore().get<ESM::Static>().search(ESM::RefId::stringRefId("VFX_Soul_Trap"));
                 if (fx != nullptr)
-                    world->spawnEffect(Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(fx->mModel)), "",
+                    world->spawnEffect(Misc::ResourceHelpers::correctMeshPath(fx->mModel.getNormalized()), "",
                         creature.getRefData().getPosition().asVec3());
 
                 MWBase::Environment::get().getSoundManager()->playSound3D(
@@ -725,11 +726,11 @@ namespace MWMechanics
                 // Player followers and escorters with high fight should not initiate combat with the player or with
                 // other player followers or escorters
                 if (!isPlayerFollowerOrEscorter)
-                    aggressive = mechanicsManager->isAggressive(actor1, actor2);
+                    aggressive = isAggressive(actor1, actor2);
             }
         }
 
-        // Make guards go aggressive with creatures and werewolves that are in combat
+        // Make guards go aggressive with hostile creatures and werewolves that are in combat
         const auto world = MWBase::Environment::get().getWorld();
         if (!aggressive && actor1.getClass().isClass(actor1, "Guard") && creatureStats2.getAiSequence().isInCombat())
         {
@@ -739,8 +740,19 @@ namespace MWMechanics
             if (sqrDist > fAlarmRadius * fAlarmRadius)
                 return;
 
+            // Check if the guard is under a calm spell
+            if (creatureStats1.getMagicEffects().getOrDefault(ESM::MagicEffect::CalmHumanoid).getMagnitude() > 0)
+                return;
+
+            // Check if the target is immobile or under a calm spell
+            if (!isAggressionCapable(actor2))
+                return;
+
+            // Check if the target is a werewolf or aggressive creature
             bool targetIsCreature = !actor2.getClass().isNpc();
-            if (targetIsCreature || actor2.getClass().getNpcStats(actor2).isWerewolf())
+            bool targetIsAggressiveCreature = targetIsCreature ? getFightTerm(actor2, player) >= 100
+                                                               : actor2.getClass().getNpcStats(actor2).isWerewolf();
+            if (targetIsAggressiveCreature)
             {
                 bool followerOrEscorter = false;
                 // ...unless the creature has allies
@@ -1848,7 +1860,7 @@ namespace MWMechanics
                 ESM::RefId::stringRefId("VFX_Summon_End"));
             if (fx)
                 MWBase::Environment::get().getWorld()->spawnEffect(
-                    Misc::ResourceHelpers::correctMeshPath(VFS::Path::Normalized(fx->mModel)), "",
+                    Misc::ResourceHelpers::correctMeshPath(fx->mModel.getNormalized()), "",
                     ptr.getRefData().getPosition().asVec3());
 
             // Remove the summoned creature's summoned creatures as well
@@ -2287,8 +2299,7 @@ namespace MWMechanics
 
             const bool isFollower = followers.find(neighbor) != followers.end();
 
-            if (stats.getAiSequence().isInCombat(actor)
-                || (MWBase::Environment::get().getMechanicsManager()->isAggressive(neighbor, actor) && !isFollower))
+            if (stats.getAiSequence().isInCombat(actor) || (MWMechanics::isAggressive(neighbor, actor) && !isFollower))
                 list.push_back(neighbor);
         }
         return list;
