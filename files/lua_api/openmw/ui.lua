@@ -101,6 +101,15 @@
 -- @return #Element
 
 ---
+-- Returns currently rendered Lua UI root Elements in this Lua context.
+-- If `layer` is provided, only Elements attached to that layer are returned.
+-- Note: this returns Elements created with `ui.create`. It does not return native engine UI widgets or child layouts
+-- that are not separate Elements.
+-- @function [parent=#ui] getElements
+-- @param #string layer Optional layer name
+-- @return #list<#Element>
+
+---
 -- Adds a settings page to main menu setting's Scripts tab.
 -- @function [parent=#ui] registerSettingsPage
 -- @param #SettingsPageOptions page
@@ -315,6 +324,9 @@
 ---
 -- A texture ready to be used by UI widgets
 -- @type TextureResource
+-- @field #string path Path to the texture file
+-- @field openmw.util#Vector2 offset Offset of this resource in the texture. (0, 0) by default
+-- @field openmw.util#Vector2 size Size of the resource in the texture. (0, 0) by default. 0 means the whole texture size is used.
 
 ---
 -- Table with arguments passed to ui.texture.

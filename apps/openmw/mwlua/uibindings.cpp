@@ -26,6 +26,14 @@
 #include "../mwrender/renderingmanager.hpp"
 #include "../mwworld/class.hpp"
 
+namespace sol
+{
+    template <>
+    struct is_automagical<LuaUi::Layer> : std::false_type
+    {
+    };
+}
+
 namespace MWLua
 {
     namespace
@@ -140,6 +148,30 @@ namespace MWLua
                   luaManager->addAction([element] { element->create(); }, "Create UI");
                   return element;
               };
+
+        api["getElements"] = [menu](sol::this_state thisState, sol::optional<std::string_view> layer) {
+            sol::table res(thisState, sol::create);
+            size_t index = 1;
+            LuaUi::Element::forEachShared(menu, [&](const std::shared_ptr<LuaUi::Element>& element) {
+                if ((element->mState != LuaUi::Element::Created && element->mState != LuaUi::Element::Update)
+                    || element->mRoot == nullptr)
+                    return;
+
+                MyGUI::ILayer* layerNode = nullptr;
+                for (LuaUi::WidgetExtension* ext = element->mRoot; ext != nullptr && layerNode == nullptr;
+                     ext = ext->getParent())
+                    layerNode = ext->widget()->getLayer();
+
+                if (!layerNode)
+                    return;
+
+                if (layer.has_value() && layerNode->getName() != *layer)
+                    return;
+
+                res[index++] = element;
+            });
+            return res;
+        };
 
         api["updateAll"] = [luaManager = context.mLuaManager, menu]() {
             LuaUi::Element::forEach(menu, [](LuaUi::Element* e) {
@@ -377,6 +409,17 @@ namespace MWLua
     {
         if (context.initializeOnce("openmw_ui_usertypes"))
         {
+            auto textureResource = context.sol().new_usertype<LuaUi::TextureResource>("TextureResource");
+            textureResource[sol::meta_function::to_string] = [](const LuaUi::TextureResource& resource) {
+                return "TextureResource[" + resource.mPath.value() + "]";
+            };
+            textureResource["path"] = sol::readonly_property(
+                [](const LuaUi::TextureResource& resource) -> std::string_view { return resource.mPath; });
+            textureResource["offset"]
+                = sol::readonly_property([](const LuaUi::TextureResource& resource) { return resource.mOffset; });
+            textureResource["size"]
+                = sol::readonly_property([](const LuaUi::TextureResource& resource) { return resource.mSize; });
+
             auto uiElement = context.sol().new_usertype<LuaUi::Element>("UiElement");
             uiElement[sol::meta_function::to_string] = [](const LuaUi::Element& element) {
                 std::stringstream res;

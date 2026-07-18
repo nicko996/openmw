@@ -32,6 +32,7 @@ local onHitHandlers = {}
 -- @field [parent=#AttackInfo] openmw.util#Vector3 hitPos (Optional) Where on the victim the attack is landing. Used to spawn blood effects. Blood effects are skipped if nil.
 -- @field [parent=#AttackInfo] #boolean ignoreArmor (Optional) Whether to ignore armor.
 -- @field [parent=#AttackInfo] #boolean ignoreDifficulty (Optional) Whether to ignore difficulty scaling.
+-- @field [parent=#AttackInfo] #boolean ignoreStagger (Optional) Whether to ignore stagger (knockdown and hit recovery).
 -- @field [parent=#AttackInfo] #boolean muteSound (Optional) If true, does not play miss or damage sounds.
 return {
     --- Basic combat interface
@@ -54,7 +55,7 @@ return {
     interface = {
         --- Interface version
         -- @field [parent=#Combat] #number version
-        version = 2,
+        version = 4,
 
         --- Add new onHit handler for this actor
         -- If `handler(attack)` returns false, other handlers for
@@ -89,6 +90,13 @@ return {
         -- @param #Attack attack
         applyArmor = function(attack) end,
 
+        --- Applies stagger (knockdown or hit recovery) to the character. Depends on the actor's agility,
+        --- the unmodified attack damage, and a random roll.
+        -- @function [parent=#Combat] applyStagger
+        -- @param #Attack attack
+        -- @param #number rawHealthDamage The health damage caused by the attack before armor reduction.
+        applyStagger = function(attack, rawHealthDamage) end,
+
         --- Computes this character's armor rating.
         -- Note that this interface function is read by the engine to update the UI.
         -- This function can still be overridden same as any other interface, but must not call any functions or interfaces that modify anything.
@@ -102,18 +110,18 @@ return {
         -- Note that this interface function is read by the engine to update the UI.
         -- This function can still be overridden same as any other interface, but must not call any functions or interfaces that modify anything.
         -- @function [parent=#Combat] getArmorSkill
-        -- @param openmw.core#GameObject item The item
+        -- @param openmw.core#GameObject item The item, Armor record, or Armor record ID
         -- @return #string The armor skill identifier, or unarmored if the item was nil or not an instance of @{openmw.types#Armor}. Can return nil if unimplemented.
-        getArmorSkill = function(item) return nil end,
+        getArmorSkill = function(itemOrId) return nil end,
 
         --- Computes the armor rating of a single piece of @{openmw.types#Armor}, adjusted for skill
         -- Note that this interface function is read by the engine to update the UI.
         -- This function can still be overridden same as any other interface, but must not call any functions or interfaces that modify anything.
         -- @function [parent=#Combat] getSkillAdjustedArmorRating
-        -- @param openmw.core#GameObject item The item
+        -- @param openmw.core#GameObject item The item, Armor record, or Armor record ID
         -- @param openmw.core#GameObject actor (Optional) The actor, defaults to self
         -- @return #number
-        getSkillAdjustedArmorRating = function(item, actor) return 0 end,
+        getSkillAdjustedArmorRating = function(itemOrId, actor) return 0 end,
 
         --- Computes the effective armor rating of a single piece of @{openmw.types#Armor}, adjusted for skill and item condition
         -- @function [parent=#Combat] getEffectiveArmorRating
