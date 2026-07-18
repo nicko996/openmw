@@ -105,54 +105,6 @@ namespace MWRender
         float mRotationRadians = 0.f;
     };
 
-    /// RTT preview of a single static mesh (weapon, armor, misc item, etc.).
-    /// Throws std::runtime_error if the mesh cannot be loaded.
-    class ObjectPreview
-    {
-    public:
-        /// \param parent          Root group node (same as CharacterPreview).
-        /// \param resourceSystem
-        /// \param meshPath        Normalized VFS path, e.g. "meshes/w/w_longsword.nif".
-        /// \param sizeX           RTT texture width.
-        /// \param sizeY           RTT texture height.
-        ObjectPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
-            const std::string& meshPath, int sizeX = 512, int sizeY = 512);
-        ~ObjectPreview();
-
-        /// Re-render (e.g. after calling setRotations).
-        void redraw();
-
-        /// Rotate the mesh.
-        /// \param yawRadians    Spin around the vertical (Z) axis, in radians.
-        /// \param pitchRadians  Tilt around the lateral (X) axis, in radians.
-        /// \param rollRadians   Tilt around the forward (Y) axis, in radians.
-        void setRotations(float yawRadians, float pitchRadians, float rollRadians = 0.f);
-
-        float getYaw() const { return mYawRadians; }
-        float getPitch() const { return mPitchRadians; }
-        float getRoll() const { return mRollRadians; }
-
-        int getTextureWidth() const { return mSizeX; }
-        int getTextureHeight() const { return mSizeY; }
-
-        osg::ref_ptr<osg::Texture2D> getTexture();
-        /// Get the osg::StateSet required to render the texture correctly, if any.
-        osg::StateSet* getTextureStateSet() { return mTextureStateSet; }
-
-    private:
-        osg::ref_ptr<osg::Group>                     mParent;
-        Resource::ResourceSystem*                    mResourceSystem;
-        osg::ref_ptr<osg::StateSet>                  mTextureStateSet;
-        osg::ref_ptr<CharacterPreviewRTTNode>         mRTTNode;
-        osg::ref_ptr<DrawOnceCallback>               mDrawOnceCallback;
-        osg::ref_ptr<osg::PositionAttitudeTransform>  mNode;
-        float mYawRadians   = 0.f;
-        float mPitchRadians = 0.f;
-        float mRollRadians  = 0.f;
-        int mSizeX = 512;
-        int mSizeY = 512;
-    };
-
     class UpdateCameraCallback;
 
     class RaceSelectionPreview : public CharacterPreview

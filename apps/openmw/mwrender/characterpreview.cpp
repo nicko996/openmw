@@ -209,8 +209,8 @@ namespace MWRender
 
     namespace
     {
-        // Build the shared LightManager with the lighting/material/fog state used by both
-        // CharacterPreview and ObjectPreview. Reads the Inventory_Directional* Morrowind fallback
+        // Build the LightManager with the lighting/material/fog state used by
+        // CharacterPreview. Reads the Inventory_Directional* Morrowind fallback
         // entries so the look matches the vanilla inventory window.
         osg::ref_ptr<SceneUtil::LightManager> makePreviewLightManager(
             Resource::ResourceSystem* resourceSystem, int sizeX, int sizeY)
@@ -525,95 +525,6 @@ namespace MWRender
 
         auto viewMatrix = osg::Matrixf::lookAt(mPosition * scale.z(), mLookAt * scale.z(), osg::Vec3f(0, 0, 1));
         mRTTNode->setViewMatrix(viewMatrix);
-    }
-
-    // --------------------------------------------------------------------------------------------------
-
-    ObjectPreview::ObjectPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
-        const std::string& meshPath, int sizeX, int sizeY)
-        : mParent(parent)
-        , mResourceSystem(resourceSystem)
-        , mSizeX(sizeX)
-        , mSizeY(sizeY)
-    {
-        if (meshPath.empty())
-            throw std::runtime_error("ObjectPreview: empty mesh path");
-
-        osg::ref_ptr<osg::Node> mesh
-            = mResourceSystem->getSceneManager()->getInstance(VFS::Path::Normalized(meshPath));
-        if (!mesh)
-            throw std::runtime_error("ObjectPreview: failed to load mesh '" + meshPath + "'");
-
-        mTextureStateSet = new osg::StateSet;
-        mTextureStateSet->setAttribute(new osg::BlendFunc(osg::BlendFunc::ONE, osg::BlendFunc::ONE_MINUS_SRC_ALPHA));
-
-        mRTTNode = new CharacterPreviewRTTNode(sizeX, sizeY);
-        mRTTNode->setNodeMask(Mask_RenderToTexture);
-
-        osg::ref_ptr<SceneUtil::LightManager> lightManager = makePreviewLightManager(resourceSystem, sizeX, sizeY);
-
-        mRTTNode->addChild(lightManager);
-
-        mNode = new osg::PositionAttitudeTransform;
-        lightManager->addChild(mNode);
-
-        mNode->addChild(mesh);
-
-        // Fix alpha blending mode for RTT (same as CharacterPreview::setBlendMode).
-        SetUpBlendVisitor visitor;
-        mNode->accept(visitor);
-
-        // Auto-frame: position camera so the bounding sphere fills ~85 % of the viewport.
-        // CharacterPreviewRTTNode bakes fovY = 12.3 degrees into the perspective matrix.
-        static constexpr float fovYDeg = 12.3f;
-        const float halfFovRad = osg::DegreesToRadians(fovYDeg * 0.5f);
-        const osg::BoundingSphere bs = mNode->getBound();
-        const float radius = bs.radius() > 0.f ? static_cast<float>(bs.radius()) : 10.f;
-        // Center the lookAt on the bounding sphere center, not the world origin,
-        // so off-center meshes are still properly framed.
-        const osg::Vec3f center(
-            static_cast<float>(bs.center().x()),
-            static_cast<float>(bs.center().y()),
-            static_cast<float>(bs.center().z()));
-        // znear = 4 in CharacterPreviewRTTNode; ensure we stay beyond near plane.
-        const float distance = std::max(8.f, radius * 1.15f / std::tan(halfFovRad));
-        const auto viewMatrix = osg::Matrixf::lookAt(
-            center + osg::Vec3f(0.f, distance, 0.f), center, osg::Vec3f(0.f, 0.f, 1.f));
-        mRTTNode->setViewMatrix(viewMatrix);
-
-        mDrawOnceCallback = new DrawOnceCallback(mRTTNode->mGroup);
-        mRTTNode->addUpdateCallback(mDrawOnceCallback);
-
-        mParent->addChild(mRTTNode);
-        redraw();
-    }
-
-    ObjectPreview::~ObjectPreview()
-    {
-        mParent->removeChild(mRTTNode);
-    }
-
-    void ObjectPreview::redraw()
-    {
-        mRTTNode->setNodeMask(Mask_RenderToTexture);
-        mDrawOnceCallback->redrawNextFrame();
-    }
-
-    void ObjectPreview::setRotations(float yawRadians, float pitchRadians, float rollRadians)
-    {
-        mYawRadians   = yawRadians;
-        mPitchRadians = pitchRadians;
-        mRollRadians  = rollRadians;
-        mNode->setAttitude(
-            osg::Quat(yawRadians, osg::Vec3f(0.f, 0.f, 1.f))
-            * osg::Quat(pitchRadians, osg::Vec3f(1.f, 0.f, 0.f))
-            * osg::Quat(rollRadians, osg::Vec3f(0.f, 1.f, 0.f)));
-        redraw();
-    }
-
-    osg::ref_ptr<osg::Texture2D> ObjectPreview::getTexture()
-    {
-        return static_cast<osg::Texture2D*>(mRTTNode->getColorTexture(nullptr));
     }
 
     // --------------------------------------------------------------------------------------------------

@@ -343,47 +343,6 @@ namespace MWLua
                   return preview;
               };
 
-        // -- Object/item preview API --
-        // ui.newObjectPreview({ object = someGameObject [, size = vector2(w,h)] })
-        // See files/lua_api/openmw/ui.lua for documentation.
-        api["newObjectPreview"]
-            = [luaManager = context.mLuaManager](const sol::table& options)
-                  -> std::shared_ptr<LuaObjectPreview> {
-                  sol::object objArg = LuaUtil::getFieldOrNil(options, "object");
-                  if (!objArg.is<LObject>())
-                      throw std::runtime_error("newObjectPreview: 'object' must be a game object");
-
-                  MWWorld::Ptr obj = objArg.as<LObject>().ptr();
-                  std::string meshPath = obj.getClass().getCorrectedModel(obj).value();
-                  if (meshPath.empty())
-                      throw std::runtime_error("newObjectPreview: object has no model");
-
-                  int sizeX = 512;
-                  int sizeY = 512;
-                  sol::object sizeObj = LuaUtil::getFieldOrNil(options, "size");
-                  if (sizeObj.is<osg::Vec2f>())
-                  {
-                      const auto v = sizeObj.as<osg::Vec2f>();
-                      sizeX = std::max(1, static_cast<int>(v.x()));
-                      sizeY = std::max(1, static_cast<int>(v.y()));
-                  }
-
-                  osg::Group* root = MWBase::Environment::get().getWorld()->getRenderingManager()->getRootNode();
-                  Resource::ResourceSystem* resourceSystem = MWBase::Environment::get().getResourceSystem();
-
-                  auto preview = std::make_shared<LuaObjectPreview>(
-                      root, resourceSystem, std::move(meshPath), sizeX, sizeY);
-
-                  LuaUi::TextureData data;
-                  data.mFlipV = true;
-                  data.mDynamicOwner = preview;
-                  auto textureResource = luaManager->uiResourceManager()->registerTexture(std::move(data));
-                  preview->setTextureResource(textureResource);
-
-                  luaManager->addAction([preview] { preview->doConstruct(); }, "ObjectPreview construct");
-                  return preview;
-              };
-
         // -- World/local map API --
         // ui.newWorldMap() / ui.newLocalMap(); see files/lua_api/openmw/ui.lua for documentation.
         api["newWorldMap"] = [luaManager = context.mLuaManager]() -> std::shared_ptr<LuaWorldMap> {
@@ -477,34 +436,6 @@ namespace MWLua
             charPreview["destroy"]
                 = [luaManager = context.mLuaManager](const std::shared_ptr<LuaCharacterPreview>& p) {
                       luaManager->addAction([p] { p->doDestroy(); }, "CharacterPreview destroy");
-                  };
-
-            // -- ObjectPreview usertype --------------------------------------------------------------
-            auto objPreview = context.sol().new_usertype<LuaObjectPreview>("ObjectPreview");
-            objPreview["textureResource"] = sol::readonly_property(
-                [](const LuaObjectPreview& p) { return p.textureResource(); });
-            objPreview["getYaw"]   = [](const LuaObjectPreview& p) { return p.getYaw(); };
-            objPreview["getPitch"] = [](const LuaObjectPreview& p) { return p.getPitch(); };
-            objPreview["getRoll"]  = [](const LuaObjectPreview& p) { return p.getRoll(); };
-            objPreview["getTextureSize"] = [](const LuaObjectPreview& p) {
-                return osg::Vec2f(static_cast<float>(p.getTextureWidth()),
-                    static_cast<float>(p.getTextureHeight()));
-            };
-            // setRotations takes a table { yaw = ?, pitch = ?, roll = ? }. Missing fields
-            // default to 0 (replace semantics): every call fully specifies the orientation.
-            objPreview["setRotations"]
-                = [luaManager = context.mLuaManager](
-                      const std::shared_ptr<LuaObjectPreview>& p, const sol::table& opts) {
-                      const float yaw = opts.get_or("yaw", 0.f);
-                      const float pitch = opts.get_or("pitch", 0.f);
-                      const float roll = opts.get_or("roll", 0.f);
-                      luaManager->addAction(
-                          [p, yaw, pitch, roll] { p->doSetRotations(yaw, pitch, roll); },
-                          "ObjectPreview setRotations");
-                  };
-            objPreview["destroy"]
-                = [luaManager = context.mLuaManager](const std::shared_ptr<LuaObjectPreview>& p) {
-                      luaManager->addAction([p] { p->doDestroy(); }, "ObjectPreview destroy");
                   };
 
             // -- WorldMap usertype -------------------------------------------------------------------

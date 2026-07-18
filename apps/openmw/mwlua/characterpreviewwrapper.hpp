@@ -26,7 +26,6 @@ namespace MyGUIPlatform
 namespace MWRender
 {
     class InventoryPreview;
-    class ObjectPreview;
 }
 
 namespace MWLua
@@ -77,47 +76,6 @@ namespace MWLua
         std::unique_ptr<MyGUIPlatform::OSGTexture> mOsgTexture;
     };
 
-    // Wraps an MWRender::ObjectPreview the same way LuaCharacterPreview wraps InventoryPreview.
-    // Works with any object that has a mesh.
-    class LuaObjectPreview
-    {
-    public:
-        LuaObjectPreview(osg::Group* parent, Resource::ResourceSystem* resourceSystem,
-            std::string meshPath, int sizeX, int sizeY);
-        ~LuaObjectPreview();
-
-        void setTextureResource(const std::shared_ptr<LuaUi::TextureResource>& tr);
-        std::shared_ptr<LuaUi::TextureResource> textureResource() const { return mTextureResource.lock(); }
-        bool isDestroyed() const { return mDestroyed; }
-
-        float getYaw() const { return mYaw; }
-        float getPitch() const { return mPitch; }
-        float getRoll() const { return mRoll; }
-        int getTextureWidth() const { return mSizeX; }
-        int getTextureHeight() const { return mSizeY; }
-
-        void doConstruct();
-        void doSetRotations(float yaw, float pitch, float roll);
-        void doDestroy();
-
-    private:
-        osg::Group* mParent;
-        Resource::ResourceSystem* mResourceSystem;
-        std::string mMeshPath;
-        int mSizeX;
-        int mSizeY;
-
-        float mYaw = 0.f;
-        float mPitch = 0.f;
-        float mRoll = 0.f;
-
-        bool mDestroyed = false;
-
-        std::weak_ptr<LuaUi::TextureResource> mTextureResource;
-
-        std::unique_ptr<MWRender::ObjectPreview> mPreview;
-        std::unique_ptr<MyGUIPlatform::OSGTexture> mOsgTexture;
-    };
 }
 
 #endif // OPENMW_MWLUA_CHARACTERPREVIEWWRAPPER_H
